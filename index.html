@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>✨ 별가루 키우기 - 우주 클릭커</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --bg-deep: #0b0e2a;
+    --bg-mid: #151a45;
+    --panel: rgba(30, 36, 82, 0.85);
+    --panel-light: rgba(58, 66, 130, 0.6);
+    --accent: #ffd966;
+    --accent-pink: #ff9ecf;
+    --accent-mint: #7df3d4;
+    --text: #eef0ff;
+    --text-dim: #9aa2d8;
+  }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    font-family: 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+    background: radial-gradient(ellipse at 50% 30%, var(--bg-mid) 0%, var(--bg-deep) 70%);
+    color: var(--text);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  #starfield {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  #game {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  /* ─── 왼쪽: 클릭 영역 ─── */
+  #main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    min-width: 0;
+  }
+
+  #stats {
+    text-align: center;
+    margin-bottom: 8px;
+  }
+
+  #stardust-count {
+    font-size: clamp(28px, 5vw, 44px);
+    font-weight: 800;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(255, 217, 102, 0.5);
+    letter-spacing: 1px;
+  }
+
+  #sps {
+    font-size: 15px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  #click-power-label {
+    font-size: 13px;
+    color: var(--accent-mint);
+    margin-top: 2px;
+  }
+
+  /* ─── 별 캐릭터 ─── */
+  #star-wrap {
+    position: relative;
+    width: min(300px, 60vw);
+    height: min(300px, 60vw);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  #star-glow {
+    position: absolute;
+    inset: 10%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 217, 102, 0.35) 0%, transparent 70%);
+    animation: pulse 3s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.15); opacity: 1; }
+  }
+
+  #star-char {
+    width: 72%;
+    height: 72%;
+    transition: transform 0.08s ease;
+    filter: drop-shadow(0 0 25px rgba(255, 217, 102, 0.45));
+    animation: float 4s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { translate: 0 -8px; }
+    50% { translate: 0 8px; }
+  }
+
+  #star-wrap:active #star-char { transform: scale(0.88); }
+  #star-wrap.bounce #star-char { transform: scale(0.88); }
+
+  /* 클릭 파티클 */
+  .pop {
+    position: absolute;
+    font-weight: 800;
+    color: var(--accent);
+    text-shadow: 0 0 8px rgba(255, 217, 102, 0.8);
+    pointer-events: none;
+    animation: popup 0.9s ease-out forwards;
+    font-size: 20px;
+    z-index: 5;
+  }
+
+  @keyframes popup {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-70px) scale(1.3); }
+  }
+
+  .sparkle {
+    position: absolute;
+    pointer-events: none;
+    font-size: 16px;
+    animation: sparkfly 0.8s ease-out forwards;
+    z-index: 4;
+  }
+
+  @keyframes sparkfly {
+    0% { opacity: 1; transform: translate(0, 0) scale(1) rotate(0deg); }
+    100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.3) rotate(180deg); }
+  }
+
+  /* 떠다니는 친구들 */
+  .friend {
+    position: absolute;
+    font-size: 28px;
+    pointer-events: none;
+    animation: orbit-float 6s ease-in-out infinite;
+    filter: drop-shadow(0 0 6px rgba(255,255,255,0.3));
+  }
+
+  @keyframes orbit-float {
+    0%, 100% { translate: 0 -10px; }
+    50% { translate: 0 10px; }
+  }
+
+  /* ─── 오른쪽: 상점 패널 ─── */
+  #shop {
+    width: 340px;
+    max-width: 45vw;
+    background: var(--panel);
+    backdrop-filter: blur(8px);
+    border-left: 2px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #shop-tabs {
+    display: flex;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .tab {
+    flex: 1;
+    padding: 13px 6px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-dim);
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    font-family: inherit;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .tab.active {
+    color: var(--accent);
+    background: rgba(255, 217, 102, 0.08);
+    box-shadow: inset 0 -3px 0 var(--accent);
+  }
+
+  #shop-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--panel-light) transparent;
+  }
+
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel-light);
+    border: 2px solid transparent;
+    border-radius: 14px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: transform 0.1s, border-color 0.15s, opacity 0.2s;
+    width: 100%;
+    font-family: inherit;
+    color: var(--text);
+    text-align: left;
+  }
+
+  .item:not(.locked):hover { border-color: var(--accent); transform: translateX(-3px); }
+  .item:not(.locked):active { transform: scale(0.97); }
+
+  .item.locked { opacity: 0.45; cursor: default; filter: grayscale(0.6); }
+  .item.hidden-item { display: none; }
+
+  .item-icon {
+    font-size: 30px;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(11, 14, 42, 0.5);
+    border-radius: 11px;
+    flex-shrink: 0;
+  }
+
+  .item-info { flex: 1; min-width: 0; }
+
+  .item-name { font-size: 14px; font-weight: 700; }
+  .item-name .owned { color: var(--accent-mint); font-weight: 800; margin-left: 4px; }
+
+  .item-desc { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+
+  .item-cost {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--accent);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .item-cost.too-expensive { color: #ff7b7b; }
+
+  .item.upgrade-bought { border-color: var(--accent-mint); opacity: 0.55; cursor: default; }
+  .item.upgrade-bought .item-cost { color: var(--accent-mint); }
+
+  /* ─── 토스트 ─── */
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--panel);
+    border: 2px solid var(--accent);
+    color: var(--text);
+    padding: 12px 22px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 700;
+    opacity: 0;
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+    z-index: 50;
+    max-width: 90vw;
+    text-align: center;
+  }
+
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ─── 오프라인 보상 모달 ─── */
+  #modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 7, 24, 0.75);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  #modal-overlay.show { display: flex; }
+
+  #modal {
+    background: var(--panel);
+    border: 2px solid var(--accent);
+    border-radius: 22px;
+    padding: 30px 34px;
+    text-align: center;
+    max-width: 320px;
+    animation: modal-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes modal-in {
+    from { transform: scale(0.7); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  #modal .big-emoji { font-size: 52px; margin-bottom: 8px; }
+  #modal h2 { font-size: 19px; margin-bottom: 8px; }
+  #modal p { font-size: 14px; color: var(--text-dim); line-height: 1.6; }
+  #modal .reward { color: var(--accent); font-weight: 800; font-size: 18px; }
+
+  #modal button {
+    margin-top: 18px;
+    background: linear-gradient(135deg, var(--accent), #ffb347);
+    border: none;
+    color: #3a2c00;
+    font-weight: 800;
+    font-size: 15px;
+    padding: 11px 34px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.1s;
+  }
+
+  #modal button:active { transform: scale(0.94); }
+
+  /* ─── 하단 유틸 바 ─── */
+  #util-bar {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+  }
+
+  .util-btn {
+    background: var(--panel);
+    border: 1.5px solid rgba(255, 255, 255, 0.15);
+    color: var(--text-dim);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 7px 13px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .util-btn:hover { color: var(--text); border-color: var(--accent); }
+
+  /* ─── 모바일 세로 레이아웃 ─── */
+  @media (max-width: 640px) {
+    #game { flex-direction: column; }
+    #main-area { flex: 1 1 48%; min-height: 0; }
+    #star-wrap { width: min(210px, 52vw); height: min(210px, 52vw); }
+    #shop {
+      width: 100%;
+      max-width: 100%;
+      flex: 1 1 52%;
+      min-height: 0;
+      border-left: none;
+      border-top: 2px solid rgba(255, 255, 255, 0.08);
+    }
+    #util-bar { top: 10px; bottom: auto; }
+  }
+</style>
+</head>
+<body>
+<canvas id="starfield"></canvas>
+
+<div id="game">
+  <div id="main-area">
+    <div id="stats">
+      <div id="stardust-count">0</div>
+      <div id="sps">✨ 초당 0 별가루</div>
+      <div id="click-power-label">👆 클릭당 +1</div>
+    </div>
+
+    <div id="star-wrap" title="별을 콕콕 눌러줘!">
+      <div id="star-glow"></div>
+      <svg id="star-char" viewBox="0 0 200 200">
+        <!-- 별 몸통 -->
+        <path d="M100 8 L124 68 L188 74 L140 118 L154 182 L100 148 L46 182 L60 118 L12 74 L76 68 Z"
+              fill="#ffd966" stroke="#f0b429" stroke-width="5" stroke-linejoin="round"/>
+        <!-- 볼터치 -->
+        <ellipse cx="66" cy="106" rx="11" ry="7" fill="#ffb0c8" opacity="0.85"/>
+        <ellipse cx="134" cy="106" rx="11" ry="7" fill="#ffb0c8" opacity="0.85"/>
+        <!-- 눈 -->
+        <g id="eyes-open">
+          <circle cx="76" cy="92" r="8" fill="#3a2c00"/>
+          <circle cx="124" cy="92" r="8" fill="#3a2c00"/>
+          <circle cx="79" cy="89" r="3" fill="#fff"/>
+          <circle cx="127" cy="89" r="3" fill="#fff"/>
+        </g>
+        <g id="eyes-happy" style="display:none">
+          <path d="M68 92 Q76 84 84 92" stroke="#3a2c00" stroke-width="5" fill="none" stroke-linecap="round"/>
+          <path d="M116 92 Q124 84 132 92" stroke="#3a2c00" stroke-width="5" fill="none" stroke-linecap="round"/>
+        </g>
+        <!-- 입 -->
+        <path id="mouth" d="M90 112 Q100 122 110 112" stroke="#3a2c00" stroke-width="5" fill="none" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <div id="util-bar">
+      <button class="util-btn" id="btn-save">💾 저장</button>
+      <button class="util-btn" id="btn-reset">🔄 초기화</button>
+    </div>
+  </div>
+
+  <div id="shop">
+    <div id="shop-tabs">
+      <button class="tab active" data-tab="buildings">🏭 시설</button>
+      <button class="tab" data-tab="upgrades">⬆️ 업그레이드</button>
+    </div>
+    <div id="shop-list"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div id="modal-overlay">
+  <div id="modal">
+    <div class="big-emoji">🎁</div>
+    <h2>어서와요, 우주 비행사!</h2>
+    <p id="modal-text"></p>
+    <button id="modal-close">받기! ✨</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ════════════════ 데이터 정의 ════════════════ */
+
+const BUILDINGS = [
+  { id: 'babystar',  icon: '⭐', name: '아기 별',       desc: '반짝반짝 아기 별이 별가루를 흘려요',      baseCost: 15,      sps: 0.1 },
+  { id: 'bunny',     icon: '🐰', name: '우주 토끼',     desc: '깡총깡총 뛰며 별가루를 모아와요',        baseCost: 100,     sps: 1 },
+  { id: 'rocket',    icon: '🚀', name: '꼬마 로켓',     desc: '슝~ 우주를 누비며 별가루를 수집해요',    baseCost: 1100,    sps: 8 },
+  { id: 'satellite', icon: '🛰️', name: '반짝 위성',     desc: '궤도를 돌며 별가루를 쓸어담아요',        baseCost: 12000,   sps: 47 },
+  { id: 'moon',      icon: '🌙', name: '치즈 달',       desc: '노란 치즈 달이 별가루를 뿜어내요',       baseCost: 130000,  sps: 260 },
+  { id: 'ufo',       icon: '🛸', name: '외계인 친구',   desc: '삐용삐용~ UFO로 별가루를 빔업해요',      baseCost: 1.4e6,   sps: 1400 },
+  { id: 'planet',    icon: '🪐', name: '고리 행성',     desc: '멋진 고리에서 별가루가 우수수 떨어져요', baseCost: 2e7,     sps: 7800 },
+  { id: 'comet',     icon: '☄️', name: '솜사탕 혜성',   desc: '달콤한 꼬리에서 별가루가 흩날려요',      baseCost: 3.3e8,   sps: 44000 },
+  { id: 'galaxy',    icon: '🌌', name: '미니 은하',     desc: '주머니 속 은하가 별가루를 소용돌이쳐요', baseCost: 5.1e9,   sps: 260000 },
+  { id: 'blackhole', icon: '🕳️', name: '아기 블랙홀',  desc: '얌얌~ 우주를 먹고 별가루를 뱉어내요',    baseCost: 7.5e10,  sps: 1.6e6 },
+];
+
+const UPGRADES = [
+  { id: 'glove1',   icon: '🧤', name: '포근한 장갑',     desc: '클릭 파워 2배!',                cost: 100,    type: 'click', mult: 2,  unlock: s => s.totalClicks >= 15 },
+  { id: 'glove2',   icon: '🌟', name: '반짝이 장갑',     desc: '클릭 파워 2배!',                cost: 2500,   type: 'click', mult: 2,  unlock: s => s.totalClicks >= 100 },
+  { id: 'glove3',   icon: '🪄', name: '마법 지팡이',     desc: '클릭 파워 3배!',                cost: 50000,  type: 'click', mult: 3,  unlock: s => s.totalClicks >= 400 },
+  { id: 'glove4',   icon: '💫', name: '유성 손길',       desc: '클릭 파워 4배!',                cost: 2e6,    type: 'click', mult: 4,  unlock: s => s.totalClicks >= 1200 },
+  { id: 'starup1',  icon: '🍼', name: '별 우유',         desc: '아기 별 생산량 2배',            cost: 500,    type: 'building', target: 'babystar', mult: 2, unlock: s => s.owned.babystar >= 5 },
+  { id: 'starup2',  icon: '🎀', name: '별 리본',         desc: '아기 별 생산량 2배',            cost: 15000,  type: 'building', target: 'babystar', mult: 2, unlock: s => s.owned.babystar >= 25 },
+  { id: 'bunnyup1', icon: '🥕', name: '우주 당근',       desc: '우주 토끼 생산량 2배',          cost: 5000,   type: 'building', target: 'bunny', mult: 2, unlock: s => s.owned.bunny >= 5 },
+  { id: 'bunnyup2', icon: '🏠', name: '토끼굴 아파트',   desc: '우주 토끼 생산량 2배',          cost: 120000, type: 'building', target: 'bunny', mult: 2, unlock: s => s.owned.bunny >= 25 },
+  { id: 'rocketup1', icon: '⛽', name: '고급 연료',      desc: '꼬마 로켓 생산량 2배',          cost: 55000,  type: 'building', target: 'rocket', mult: 2, unlock: s => s.owned.rocket >= 5 },
+  { id: 'satup1',   icon: '📡', name: '수신 안테나',     desc: '반짝 위성 생산량 2배',          cost: 6e5,    type: 'building', target: 'satellite', mult: 2, unlock: s => s.owned.satellite >= 5 },
+  { id: 'moonup1',  icon: '🧀', name: '숙성 치즈',       desc: '치즈 달 생산량 2배',            cost: 6.5e6,  type: 'building', target: 'moon', mult: 2, unlock: s => s.owned.moon >= 5 },
+  { id: 'ufoup1',   icon: '👽', name: '외계어 사전',     desc: '외계인 친구 생산량 2배',        cost: 7e7,    type: 'building', target: 'ufo', mult: 2, unlock: s => s.owned.ufo >= 5 },
+  { id: 'allup1',   icon: '🌈', name: '무지개 성운',     desc: '모든 시설 생산량 1.5배!',       cost: 1e8,    type: 'global', mult: 1.5, unlock: s => totalOwned(s) >= 60 },
+  { id: 'allup2',   icon: '🎆', name: '축제 불꽃',       desc: '모든 시설 생산량 2배!',         cost: 5e9,    type: 'global', mult: 2,   unlock: s => totalOwned(s) >= 120 },
+];
+
+/* ════════════════ 상태 ════════════════ */
+
+const SAVE_KEY = 'stardust-idle-save-v1';
+
+function freshState() {
+  const owned = {};
+  BUILDINGS.forEach(b => owned[b.id] = 0);
+  return {
+    stardust: 0,
+    totalEarned: 0,
+    totalClicks: 0,
+    owned,
+    upgrades: [],
+    lastTick: Date.now(),
+  };
+}
+
+let S = freshState();
+
+function totalOwned(s) {
+  return Object.values(s.owned).reduce((a, b) => a + b, 0);
+}
+
+/* ════════════════ 계산 ════════════════ */
+
+function buildingMult(id) {
+  let m = 1;
+  for (const uid of S.upgrades) {
+    const u = UPGRADES.find(x => x.id === uid);
+    if (!u) continue;
+    if (u.type === 'building' && u.target === id) m *= u.mult;
+    if (u.type === 'global') m *= u.mult;
+  }
+  return m;
+}
+
+function clickPower() {
+  let p = 1;
+  for (const uid of S.upgrades) {
+    const u = UPGRADES.find(x => x.id === uid);
+    if (u && u.type === 'click') p *= u.mult;
+  }
+  // 초당 생산량의 1%도 클릭에 보태줘요 (후반 클릭 재미 유지)
+  return p + totalSps() * 0.01;
+}
+
+function totalSps() {
+  let sum = 0;
+  for (const b of BUILDINGS) {
+    sum += b.sps * S.owned[b.id] * buildingMult(b.id);
+  }
+  return sum;
+}
+
+function buildingCost(b) {
+  return Math.ceil(b.baseCost * Math.pow(1.15, S.owned[b.id]));
+}
+
+/* ════════════════ 숫자 표기 (한국식) ════════════════ */
+
+const UNITS = [
+  { v: 1e16, s: '경' },
+  { v: 1e12, s: '조' },
+  { v: 1e8,  s: '억' },
+  { v: 1e4,  s: '만' },
+];
+
+function fmt(n) {
+  if (n < 0) return '0';
+  if (n < 1000) return (Math.floor(n * 10) / 10).toString().replace(/\.0$/, '');
+  for (const u of UNITS) {
+    if (n >= u.v) {
+      const val = n / u.v;
+      return (val >= 100 ? Math.floor(val) : Math.floor(val * 10) / 10) + u.s;
+    }
+  }
+  return Math.floor(n).toLocaleString('ko-KR');
+}
+
+/* ════════════════ DOM 참조 ════════════════ */
+
+const $count = document.getElementById('stardust-count');
+const $sps = document.getElementById('sps');
+const $clickLabel = document.getElementById('click-power-label');
+const $starWrap = document.getElementById('star-wrap');
+const $shopList = document.getElementById('shop-list');
+const $toast = document.getElementById('toast');
+const $mainArea = document.getElementById('main-area');
+const $eyesOpen = document.getElementById('eyes-open');
+const $eyesHappy = document.getElementById('eyes-happy');
+
+let activeTab = 'buildings';
+
+/* ════════════════ 상점 렌더링 ════════════════ */
+
+function renderShop() {
+  $shopList.innerHTML = '';
+  if (activeTab === 'buildings') {
+    let prevOwnedOrVisible = true;
+    for (let i = 0; i < BUILDINGS.length; i++) {
+      const b = BUILDINGS[i];
+      // 이전 건물을 하나라도 갖고 있거나, 살 수 있을 만큼 모은 적 있으면 노출
+      const visible = i === 0 || S.owned[BUILDINGS[i-1].id] > 0 || S.totalEarned >= b.baseCost * 0.5;
+      if (!visible) { break; }
+      const cost = buildingCost(b);
+      const canBuy = S.stardust >= cost;
+      const btn = document.createElement('button');
+      btn.className = 'item' + (canBuy ? '' : ' locked');
+      btn.dataset.buy = b.id;
+      btn.innerHTML = `
+        <div class="item-icon">${b.icon}</div>
+        <div class="item-info">
+          <div class="item-name">${b.name}<span class="owned">${S.owned[b.id] > 0 ? '×' + S.owned[b.id] : ''}</span></div>
+          <div class="item-desc">${b.desc}<br>초당 +${fmt(b.sps * buildingMult(b.id))}</div>
+        </div>
+        <div class="item-cost ${canBuy ? '' : 'too-expensive'}">✨${fmt(cost)}</div>`;
+      $shopList.appendChild(btn);
+    }
+  } else {
+    let shown = 0;
+    for (const u of UPGRADES) {
+      const bought = S.upgrades.includes(u.id);
+      if (!bought && !u.unlock(S)) continue;
+      shown++;
+      const canBuy = !bought && S.stardust >= u.cost;
+      const btn = document.createElement('button');
+      btn.className = 'item' + (bought ? ' upgrade-bought' : canBuy ? '' : ' locked');
+      if (!bought) btn.dataset.upgrade = u.id;
+      btn.innerHTML = `
+        <div class="item-icon">${u.icon}</div>
+        <div class="item-info">
+          <div class="item-name">${u.name}</div>
+          <div class="item-desc">${u.desc}</div>
+        </div>
+        <div class="item-cost ${bought ? '' : canBuy ? '' : 'too-expensive'}">${bought ? '완료!' : '✨' + fmt(u.cost)}</div>`;
+      $shopList.appendChild(btn);
+    }
+    if (shown === 0) {
+      const p = document.createElement('div');
+      p.style.cssText = 'text-align:center;color:var(--text-dim);padding:30px 10px;font-size:13px;line-height:1.7';
+      p.innerHTML = '아직 업그레이드가 없어요!<br>별을 더 클릭하고 시설을 모아보세요 🌟';
+      $shopList.appendChild(p);
+    }
+  }
+}
+
+/* ════════════════ 구매 ════════════════ */
+
+$shopList.addEventListener('click', e => {
+  const btn = e.target.closest('.item');
+  if (!btn) return;
+  if (btn.dataset.buy) {
+    const b = BUILDINGS.find(x => x.id === btn.dataset.buy);
+    const cost = buildingCost(b);
+    if (S.stardust < cost) return;
+    S.stardust -= cost;
+    S.owned[b.id]++;
+    toast(`${b.icon} ${b.name} 획득! (${S.owned[b.id]}개)`);
+    happyFace();
+    renderShop();
+  } else if (btn.dataset.upgrade) {
+    const u = UPGRADES.find(x => x.id === btn.dataset.upgrade);
+    if (S.upgrades.includes(u.id) || S.stardust < u.cost) return;
+    S.stardust -= u.cost;
+    S.upgrades.push(u.id);
+    toast(`${u.icon} ${u.name} 구매! ${u.desc}`);
+    happyFace();
+    renderShop();
+  }
+});
+
+/* ════════════════ 탭 ════════════════ */
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    activeTab = t.dataset.tab;
+    renderShop();
+  });
+});
+
+/* ════════════════ 클릭 ════════════════ */
+
+const SPARKS = ['✨', '⭐', '💫', '🌟'];
+
+function doClick(x, y) {
+  const gain = clickPower();
+  S.stardust += gain;
+  S.totalEarned += gain;
+  S.totalClicks++;
+
+  // +숫자 팝업
+  const pop = document.createElement('div');
+  pop.className = 'pop';
+  pop.textContent = '+' + fmt(gain);
+  pop.style.left = x + 'px';
+  pop.style.top = y + 'px';
+  $mainArea.appendChild(pop);
+  setTimeout(() => pop.remove(), 900);
+
+  // 반짝이 파티클
+  for (let i = 0; i < 3; i++) {
+    const sp = document.createElement('div');
+    sp.className = 'sparkle';
+    sp.textContent = SPARKS[Math.floor(Math.random() * SPARKS.length)];
+    sp.style.left = x + 'px';
+    sp.style.top = y + 'px';
+    sp.style.setProperty('--dx', (Math.random() * 120 - 60) + 'px');
+    sp.style.setProperty('--dy', (Math.random() * -90 - 20) + 'px');
+    $mainArea.appendChild(sp);
+    setTimeout(() => sp.remove(), 800);
+  }
+
+  happyFace();
+  updateStats();
+  refreshShopAffordability();
+}
+
+$starWrap.addEventListener('pointerdown', e => {
+  const rect = $mainArea.getBoundingClientRect();
+  doClick(e.clientX - rect.left, e.clientY - rect.top);
+});
+
+// 스페이스바로도 클릭 가능
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !e.repeat) {
+    e.preventDefault();
+    const rect = $starWrap.getBoundingClientRect();
+    const mrect = $mainArea.getBoundingClientRect();
+    doClick(rect.left - mrect.left + rect.width / 2, rect.top - mrect.top + rect.height / 3);
+    $starWrap.classList.add('bounce');
+    setTimeout(() => $starWrap.classList.remove('bounce'), 90);
+  }
+});
+
+let happyTimer = null;
+function happyFace() {
+  $eyesOpen.style.display = 'none';
+  $eyesHappy.style.display = '';
+  clearTimeout(happyTimer);
+  happyTimer = setTimeout(() => {
+    $eyesOpen.style.display = '';
+    $eyesHappy.style.display = 'none';
+  }, 600);
+}
+
+/* ════════════════ UI 갱신 ════════════════ */
+
+function updateStats() {
+  $count.textContent = '✨ ' + fmt(S.stardust);
+  $sps.textContent = `초당 ${fmt(totalSps())} 별가루`;
+  $clickLabel.textContent = `👆 클릭당 +${fmt(clickPower())}`;
+}
+
+// 매 프레임 전체 재렌더 대신 가격 색상만 갱신
+function refreshShopAffordability() {
+  $shopList.querySelectorAll('.item').forEach(btn => {
+    let cost = null;
+    if (btn.dataset.buy) {
+      cost = buildingCost(BUILDINGS.find(x => x.id === btn.dataset.buy));
+    } else if (btn.dataset.upgrade) {
+      cost = UPGRADES.find(x => x.id === btn.dataset.upgrade).cost;
+    }
+    if (cost === null) return;
+    const can = S.stardust >= cost;
+    btn.classList.toggle('locked', !can);
+    const costEl = btn.querySelector('.item-cost');
+    if (costEl) costEl.classList.toggle('too-expensive', !can);
+  });
+}
+
+function toast(msg) {
+  $toast.textContent = msg;
+  $toast.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => $toast.classList.remove('show'), 2200);
+}
+
+/* ════════════════ 떠다니는 친구들 (보유 시설 표시) ════════════════ */
+
+const friendEls = new Map();
+
+function updateFriends() {
+  for (const b of BUILDINGS) {
+    const has = S.owned[b.id] > 0;
+    if (has && !friendEls.has(b.id)) {
+      const el = document.createElement('div');
+      el.className = 'friend';
+      el.textContent = b.icon;
+      const angle = Math.random() * Math.PI * 2;
+      const rx = 38 + Math.random() * 8;
+      const ry = 30 + Math.random() * 10;
+      el.style.left = `calc(50% + ${Math.cos(angle) * rx}vmin - 14px)`;
+      el.style.top = `calc(46% + ${Math.sin(angle) * ry * 0.55}vmin - 14px)`;
+      el.style.animationDelay = (Math.random() * 4) + 's';
+      el.style.animationDuration = (5 + Math.random() * 3) + 's';
+      $mainArea.appendChild(el);
+      friendEls.set(b.id, el);
+    }
+  }
+}
+
+/* ════════════════ 별 배경 ════════════════ */
+
+const canvas = document.getElementById('starfield');
+const ctx = canvas.getContext('2d');
+let bgStars = [];
+
+function initStarfield() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  bgStars = Array.from({ length: 90 }, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height,
+    r: Math.random() * 1.6 + 0.4,
+    tw: Math.random() * Math.PI * 2,
+    speed: 0.4 + Math.random() * 1.2,
+  }));
+}
+
+function drawStarfield(t) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (const s of bgStars) {
+    const a = 0.35 + 0.55 * Math.abs(Math.sin(t / 1000 * s.speed + s.tw));
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+window.addEventListener('resize', initStarfield);
+
+/* ════════════════ 게임 루프 ════════════════ */
+
+let lastFrame = performance.now();
+let shopDirtyTimer = 0;
+
+function loop(now) {
+  const dt = Math.min((now - lastFrame) / 1000, 1);
+  lastFrame = now;
+
+  const gain = totalSps() * dt;
+  if (gain > 0) {
+    S.stardust += gain;
+    S.totalEarned += gain;
+  }
+
+  updateStats();
+  drawStarfield(now);
+  updateFriends();
+
+  // 상점 잠금 상태는 0.25초마다 갱신 (매 프레임 DOM 조작 최소화)
+  shopDirtyTimer += dt;
+  if (shopDirtyTimer > 0.25) {
+    shopDirtyTimer = 0;
+    refreshShopAffordability();
+    // 새 건물/업그레이드 해금 감지
+    const listCount = $shopList.querySelectorAll('.item').length;
+    const expect = activeTab === 'buildings' ? visibleBuildingCount() : visibleUpgradeCount();
+    if (listCount !== expect) renderShop();
+  }
+
+  requestAnimationFrame(loop);
+}
+
+function visibleBuildingCount() {
+  let n = 0;
+  for (let i = 0; i < BUILDINGS.length; i++) {
+    const visible = i === 0 || S.owned[BUILDINGS[i-1].id] > 0 || S.totalEarned >= BUILDINGS[i].baseCost * 0.5;
+    if (!visible) break;
+    n++;
+  }
+  return n;
+}
+
+function visibleUpgradeCount() {
+  return UPGRADES.filter(u => S.upgrades.includes(u.id) || u.unlock(S)).length;
+}
+
+/* ════════════════ 저장 / 불러오기 ════════════════ */
+
+function save(silent) {
+  S.lastTick = Date.now();
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(S));
+    if (!silent) toast('💾 저장 완료!');
+  } catch (e) { /* 저장 불가 환경 무시 */ }
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    const base = freshState();
+    S = { ...base, ...data, owned: { ...base.owned, ...(data.owned || {}) } };
+
+    // 오프라인 수익 (최대 8시간, 50% 효율)
+    const away = (Date.now() - (data.lastTick || Date.now())) / 1000;
+    const sps = totalSps();
+    if (away > 60 && sps > 0) {
+      const capped = Math.min(away, 8 * 3600);
+      const reward = sps * capped * 0.5;
+      S.stardust += reward;
+      S.totalEarned += reward;
+      const mins = Math.floor(away / 60);
+      const timeStr = mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`;
+      document.getElementById('modal-text').innerHTML =
+        `자리를 비운 <b>${timeStr}</b> 동안<br>친구들이 별가루를 모아뒀어요!<br><span class="reward">✨ +${fmt(reward)}</span>`;
+      document.getElementById('modal-overlay').classList.add('show');
+    }
+  } catch (e) { /* 손상된 세이브 무시 */ }
+}
+
+document.getElementById('modal-close').addEventListener('click', () => {
+  document.getElementById('modal-overlay').classList.remove('show');
+});
+
+document.getElementById('btn-save').addEventListener('click', () => save(false));
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  if (confirm('정말 처음부터 다시 시작할까요? 모든 진행이 사라져요! 🥺')) {
+    localStorage.removeItem(SAVE_KEY);
+    friendEls.forEach(el => el.remove());
+    friendEls.clear();
+    S = freshState();
+    renderShop();
+    updateStats();
+    toast('🌱 새로운 우주에서 다시 시작!');
+  }
+});
+
+setInterval(() => save(true), 15000);
+window.addEventListener('beforeunload', () => save(true));
+
+/* ════════════════ 시작! ════════════════ */
+
+load();
+initStarfield();
+renderShop();
+updateStats();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
