@@ -396,6 +396,92 @@
   #io-primary { background: linear-gradient(135deg, var(--accent-mint), #4dd6b0); color: #00382a; }
   #io-cancel { background: var(--panel-light); color: var(--text); }
 
+  /* ─── 클라우드 동기화 모달 ─── */
+  #cloud-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 7, 24, 0.75);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  #cloud-overlay.show { display: flex; }
+
+  #cloud-modal {
+    background: var(--panel);
+    border: 2px solid #8ab6ff;
+    border-radius: 22px;
+    padding: 26px 28px;
+    width: min(430px, 92vw);
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: modal-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  #cloud-modal h2 { font-size: 18px; margin-bottom: 6px; text-align: center; }
+  #cloud-modal .cloud-hint { font-size: 12px; color: var(--text-dim); line-height: 1.6; text-align: center; margin-bottom: 14px; }
+  #cloud-modal .cloud-hint a { color: #8ab6ff; }
+
+  .cloud-field { margin-bottom: 10px; }
+  .cloud-field label { display: block; font-size: 12px; font-weight: 700; color: var(--text-dim); margin-bottom: 4px; }
+
+  .cloud-field input {
+    width: 100%;
+    background: rgba(11, 14, 42, 0.7);
+    border: 1.5px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 9px 12px;
+  }
+
+  .cloud-field input:focus { outline: none; border-color: #8ab6ff; }
+
+  #cloud-auto-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin: 4px 0 12px;
+    cursor: pointer;
+  }
+
+  #cloud-auto-row input { accent-color: #8ab6ff; width: 16px; height: 16px; cursor: pointer; }
+
+  #cloud-status {
+    font-size: 12.5px;
+    text-align: center;
+    min-height: 18px;
+    margin-bottom: 10px;
+    color: var(--accent-mint);
+  }
+
+  #cloud-status.err { color: #ff7b7b; }
+
+  #cloud-buttons { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+  #cloud-buttons button {
+    border: none;
+    font-weight: 800;
+    font-size: 13.5px;
+    padding: 10px 18px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.1s, opacity 0.15s;
+  }
+
+  #cloud-buttons button:active { transform: scale(0.94); }
+  #cloud-buttons button:disabled { opacity: 0.5; cursor: default; }
+
+  #cloud-upload { background: linear-gradient(135deg, #8ab6ff, #5d8ef7); color: #06214d; }
+  #cloud-download { background: linear-gradient(135deg, var(--accent-mint), #4dd6b0); color: #00382a; }
+  #cloud-close { background: var(--panel-light); color: var(--text); }
+
   /* ─── 하단 유틸 바 ─── */
   #util-bar {
     position: absolute;
@@ -479,6 +565,7 @@
       <button class="util-btn" id="btn-save">💾 저장</button>
       <button class="util-btn" id="btn-export">📤 백업</button>
       <button class="util-btn" id="btn-import">📥 복원</button>
+      <button class="util-btn" id="btn-cloud">☁️ 동기화</button>
       <button class="util-btn" id="btn-reset">🔄 초기화</button>
     </div>
   </div>
@@ -500,6 +587,38 @@
     <h2>어서와요, 우주 비행사!</h2>
     <p id="modal-text"></p>
     <button id="modal-close">받기! ✨</button>
+  </div>
+</div>
+
+<div id="cloud-overlay">
+  <div id="cloud-modal">
+    <h2>☁️ 구글 시트 동기화</h2>
+    <p class="cloud-hint">
+      내 구글 시트를 무료 저장소로 사용해요.<br>
+      최초 1회 설정 방법은 저장소의 <b>README</b>를 참고하세요!
+    </p>
+    <div class="cloud-field">
+      <label for="cloud-url">웹 앱 URL (Apps Script 배포 주소)</label>
+      <input id="cloud-url" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+    </div>
+    <div class="cloud-field">
+      <label for="cloud-user">닉네임</label>
+      <input id="cloud-user" type="text" placeholder="예: 별가루대장" maxlength="30" autocomplete="off">
+    </div>
+    <div class="cloud-field">
+      <label for="cloud-pass">비밀코드</label>
+      <input id="cloud-pass" type="password" placeholder="나만 아는 코드 (잊어버리면 복구 불가!)" maxlength="60" autocomplete="off">
+    </div>
+    <label id="cloud-auto-row">
+      <input id="cloud-auto" type="checkbox">
+      3분마다 + 종료 시 자동으로 클라우드에 저장
+    </label>
+    <div id="cloud-status"></div>
+    <div id="cloud-buttons">
+      <button id="cloud-upload">⬆️ 클라우드에 저장</button>
+      <button id="cloud-download">⬇️ 불러오기</button>
+      <button id="cloud-close">닫기</button>
+    </div>
   </div>
 </div>
 
@@ -1057,6 +1176,137 @@ $ioPrimary.addEventListener('click', async () => {
 
 document.getElementById('io-cancel').addEventListener('click', () => $ioOverlay.classList.remove('show'));
 $ioOverlay.addEventListener('click', e => { if (e.target === $ioOverlay) $ioOverlay.classList.remove('show'); });
+
+/* ─── 구글 시트 클라우드 동기화 ─── */
+
+const CLOUD_KEY = 'stardust-idle-cloud-v1';
+const $cloudOverlay = document.getElementById('cloud-overlay');
+const $cloudUrl = document.getElementById('cloud-url');
+const $cloudUser = document.getElementById('cloud-user');
+const $cloudPass = document.getElementById('cloud-pass');
+const $cloudAuto = document.getElementById('cloud-auto');
+const $cloudStatus = document.getElementById('cloud-status');
+const $cloudUpload = document.getElementById('cloud-upload');
+const $cloudDownload = document.getElementById('cloud-download');
+
+function cloudConfig() {
+  try { return JSON.parse(localStorage.getItem(CLOUD_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+
+function saveCloudConfig() {
+  const cfg = {
+    url: $cloudUrl.value.trim(),
+    user: $cloudUser.value.trim(),
+    pass: $cloudPass.value,
+    auto: $cloudAuto.checked,
+  };
+  try { localStorage.setItem(CLOUD_KEY, JSON.stringify(cfg)); } catch (e) {}
+  return cfg;
+}
+
+function cloudReady(cfg) {
+  return cfg.url && cfg.url.startsWith('https://script.google.com/') && cfg.user && cfg.pass;
+}
+
+function cloudStatus(msg, isErr) {
+  $cloudStatus.textContent = msg;
+  $cloudStatus.classList.toggle('err', !!isErr);
+}
+
+const CLOUD_ERRORS = {
+  not_found: '아직 이 닉네임으로 저장된 세이브가 없어요',
+  wrong_pass: '비밀코드가 달라요! 다시 확인해주세요',
+  bad_request: '요청이 잘못됐어요. URL을 다시 확인해주세요',
+  bad_json: '요청이 잘못됐어요. URL을 다시 확인해주세요',
+  too_big: '세이브가 너무 커요',
+};
+
+async function cloudSave(cfg, silent) {
+  if (!cloudReady(cfg)) {
+    if (!silent) cloudStatus('URL·닉네임·비밀코드를 모두 입력해주세요', true);
+    return false;
+  }
+  if (!silent) { cloudStatus('⬆️ 저장 중…'); setCloudBusy(true); }
+  try {
+    const res = await fetch(cfg.url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'save', user: cfg.user, pass: cfg.pass, data: encodeSave() }),
+    });
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error || 'unknown');
+    if (!silent) cloudStatus('✅ 클라우드에 저장했어요!');
+    return true;
+  } catch (e) {
+    if (!silent) cloudStatus('⚠️ ' + (CLOUD_ERRORS[e.message] || '저장 실패! 인터넷과 URL을 확인해주세요'), true);
+    return false;
+  } finally {
+    if (!silent) setCloudBusy(false);
+  }
+}
+
+async function cloudLoad(cfg) {
+  if (!cloudReady(cfg)) {
+    cloudStatus('URL·닉네임·비밀코드를 모두 입력해주세요', true);
+    return;
+  }
+  cloudStatus('⬇️ 불러오는 중…');
+  setCloudBusy(true);
+  try {
+    const qs = new URLSearchParams({ action: 'load', user: cfg.user, pass: cfg.pass });
+    const res = await fetch(cfg.url + '?' + qs.toString());
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error || 'unknown');
+    applySave(decodeSave(out.data));
+    cloudStatus('✅ 세이브를 불러왔어요! 이어서 플레이하세요');
+    toast('☁️ 클라우드 세이브 불러오기 완료!');
+  } catch (e) {
+    cloudStatus('⚠️ ' + (CLOUD_ERRORS[e.message] || '불러오기 실패! 인터넷과 URL을 확인해주세요'), true);
+  } finally {
+    setCloudBusy(false);
+  }
+}
+
+function setCloudBusy(busy) {
+  $cloudUpload.disabled = busy;
+  $cloudDownload.disabled = busy;
+}
+
+document.getElementById('btn-cloud').addEventListener('click', () => {
+  const cfg = cloudConfig();
+  $cloudUrl.value = cfg.url || '';
+  $cloudUser.value = cfg.user || '';
+  $cloudPass.value = cfg.pass || '';
+  $cloudAuto.checked = !!cfg.auto;
+  cloudStatus(cloudReady(cfg) ? '설정 완료! 언제든 저장/불러오기 할 수 있어요' : '');
+  $cloudOverlay.classList.add('show');
+});
+
+$cloudUpload.addEventListener('click', () => cloudSave(saveCloudConfig(), false));
+$cloudDownload.addEventListener('click', () => cloudLoad(saveCloudConfig()));
+$cloudAuto.addEventListener('change', saveCloudConfig);
+
+document.getElementById('cloud-close').addEventListener('click', () => {
+  saveCloudConfig();
+  $cloudOverlay.classList.remove('show');
+});
+$cloudOverlay.addEventListener('click', e => {
+  if (e.target === $cloudOverlay) { saveCloudConfig(); $cloudOverlay.classList.remove('show'); }
+});
+
+// 자동 동기화: 3분마다 + 종료 시
+setInterval(() => {
+  const cfg = cloudConfig();
+  if (cfg.auto && cloudReady(cfg)) cloudSave(cfg, true);
+}, 180000);
+
+window.addEventListener('beforeunload', () => {
+  const cfg = cloudConfig();
+  if (cfg.auto && cloudReady(cfg) && navigator.sendBeacon) {
+    const body = JSON.stringify({ action: 'save', user: cfg.user, pass: cfg.pass, data: encodeSave() });
+    navigator.sendBeacon(cfg.url, new Blob([body], { type: 'text/plain;charset=utf-8' }));
+  }
+});
 
 document.getElementById('btn-reset').addEventListener('click', () => {
   if (confirm('정말 처음부터 다시 시작할까요? 모든 진행이 사라져요! 🥺')) {
