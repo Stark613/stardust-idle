@@ -80,6 +80,48 @@
     margin-top: 2px;
   }
 
+  #essence-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent-pink);
+    margin-top: 2px;
+  }
+
+  #btn-supernova {
+    margin-top: 10px;
+    background: linear-gradient(135deg, var(--accent-pink), var(--accent));
+    border: none;
+    color: #5b1e3e;
+    font-weight: 800;
+    font-size: 14px;
+    padding: 10px 22px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: inherit;
+    box-shadow: 0 0 18px rgba(255, 158, 207, 0.55);
+    animation: nova-glow 2s ease-in-out infinite;
+    transition: transform 0.1s;
+  }
+
+  @keyframes nova-glow {
+    0%, 100% { box-shadow: 0 0 10px rgba(255, 158, 207, 0.4); }
+    50% { box-shadow: 0 0 26px rgba(255, 217, 102, 0.9); }
+  }
+
+  #btn-supernova:active { transform: scale(0.94); }
+
+  /* 골든 혜성 */
+  .meteor {
+    position: absolute;
+    font-size: 38px;
+    z-index: 6;
+    cursor: pointer;
+    filter: drop-shadow(0 0 14px #ffd966) drop-shadow(0 0 4px #fff);
+    transition: left 7s linear, top 7s linear;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
   /* ─── 별 캐릭터 ─── */
   #star-wrap {
     position: relative;
@@ -534,6 +576,8 @@
       <div id="stardust-count">0</div>
       <div id="sps">✨ 초당 0 별가루</div>
       <div id="click-power-label">👆 클릭당 +1</div>
+      <div id="essence-label" style="display:none"></div>
+      <button id="btn-supernova" style="display:none"></button>
     </div>
 
     <div id="star-wrap" title="별을 콕콕 눌러줘!">
@@ -682,6 +726,8 @@ function freshState() {
     totalClicks: 0,
     owned,
     upgrades: [],
+    essence: 0,
+    resets: 0,
     lastTick: Date.now(),
   };
 }
@@ -705,6 +751,10 @@ function buildingMult(id) {
   return m;
 }
 
+function essenceMult() {
+  return 1 + (S.essence || 0) * 0.02;
+}
+
 function clickPower() {
   let p = 1;
   for (const uid of S.upgrades) {
@@ -712,7 +762,7 @@ function clickPower() {
     if (u && u.type === 'click') p *= u.mult;
   }
   // 초당 생산량의 1%도 클릭에 보태줘요 (후반 클릭 재미 유지)
-  return p + totalSps() * 0.01;
+  return p * essenceMult() + totalSps() * 0.01;
 }
 
 function totalSps() {
@@ -720,7 +770,12 @@ function totalSps() {
   for (const b of BUILDINGS) {
     sum += b.sps * S.owned[b.id] * buildingMult(b.id);
   }
-  return sum;
+  return sum * essenceMult();
+}
+
+// 초신성 폭발 시 얻는 별의 정수 (이번 생의 누적 획득량 기준)
+function supernovaGain() {
+  return Math.floor(Math.sqrt(S.totalEarned / 1e6));
 }
 
 function buildingCost(b) {
@@ -918,11 +973,50 @@ function happyFace() {
 
 /* ════════════════ UI 갱신 ════════════════ */
 
+const $essenceLabel = document.getElementById('essence-label');
+const $btnSupernova = document.getElementById('btn-supernova');
+
 function updateStats() {
   $count.textContent = '✨ ' + fmt(S.stardust);
   $sps.textContent = `초당 ${fmt(totalSps())} 별가루`;
   $clickLabel.textContent = `👆 클릭당 +${fmt(clickPower())}`;
+
+  if (S.essence > 0) {
+    $essenceLabel.style.display = '';
+    $essenceLabel.textContent = `🌟 별의 정수 ${S.essence} · 모든 획득 +${S.essence * 2}%`;
+  } else {
+    $essenceLabel.style.display = 'none';
+  }
+
+  const gain = supernovaGain();
+  if (gain >= 1) {
+    $btnSupernova.style.display = '';
+    $btnSupernova.textContent = `💥 초신성 폭발! → 🌟 정수 +${gain}`;
+  } else {
+    $btnSupernova.style.display = 'none';
+  }
 }
+
+$btnSupernova.addEventListener('click', () => {
+  const gain = supernovaGain();
+  if (gain < 1) return;
+  const msg = `💥 초신성 폭발!\n\n별가루·시설·업그레이드가 모두 사라지는 대신\n🌟 별의 정수 ${gain}개를 얻어요.\n(정수 1개당 모든 획득량 +2%, 영구 지속)\n\n새로운 별로 다시 태어날까요?`;
+  if (!confirm(msg)) return;
+  const essence = S.essence + gain;
+  const resets = S.resets + 1;
+  const clicks = S.totalClicks;
+  friendEls.forEach(el => el.remove());
+  friendEls.clear();
+  S = freshState();
+  S.essence = essence;
+  S.resets = resets;
+  S.totalClicks = clicks;
+  save(true);
+  renderShop();
+  updateStats();
+  happyFace();
+  toast(`💥 초신성 폭발! 🌟 별의 정수 +${gain} (총 ${essence}개)`);
+});
 
 // 매 프레임 전체 재렌더 대신 가격 색상만 갱신
 function refreshShopAffordability() {
@@ -970,6 +1064,51 @@ function updateFriends() {
       friendEls.set(b.id, el);
     }
   }
+}
+
+/* ════════════════ 골든 혜성 랜덤 이벤트 ════════════════ */
+
+function spawnMeteor() {
+  if (document.querySelector('.meteor')) return;
+  const m = document.createElement('div');
+  m.className = 'meteor';
+  m.textContent = '☄️';
+  const W = $mainArea.clientWidth;
+  const H = $mainArea.clientHeight;
+  const fromLeft = Math.random() < 0.5;
+  m.style.left = (fromLeft ? -50 : W + 50) + 'px';
+  m.style.top = H * (0.08 + Math.random() * 0.3) + 'px';
+  $mainArea.appendChild(m);
+  m.getBoundingClientRect(); // 리플로우로 트랜지션 시작점 고정
+  m.style.left = (fromLeft ? W + 60 : -60) + 'px';
+  m.style.top = H * (0.45 + Math.random() * 0.4) + 'px';
+
+  m.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    const bonus = Math.max(clickPower() * 100, totalSps() * 120);
+    S.stardust += bonus;
+    S.totalEarned += bonus;
+    const rect = $mainArea.getBoundingClientRect();
+    const pop = document.createElement('div');
+    pop.className = 'pop';
+    pop.textContent = '☄️ +' + fmt(bonus);
+    pop.style.left = (e.clientX - rect.left) + 'px';
+    pop.style.top = (e.clientY - rect.top) + 'px';
+    pop.style.fontSize = '26px';
+    $mainArea.appendChild(pop);
+    setTimeout(() => pop.remove(), 900);
+    toast('☄️ 골든 혜성을 잡았다! ✨ +' + fmt(bonus));
+    m.remove();
+    updateStats();
+    refreshShopAffordability();
+  }, { once: true });
+
+  setTimeout(() => m.remove(), 7500);
+}
+
+function scheduleMeteor() {
+  // 90초~4분 사이 랜덤 출현
+  setTimeout(() => { spawnMeteor(); scheduleMeteor(); }, 90000 + Math.random() * 150000);
 }
 
 /* ════════════════ 별 배경 ════════════════ */
@@ -1069,22 +1208,24 @@ function load() {
     const data = JSON.parse(raw);
     const base = freshState();
     S = { ...base, ...data, owned: { ...base.owned, ...(data.owned || {}) } };
-
-    // 오프라인 수익 (최대 8시간, 50% 효율)
-    const away = (Date.now() - (data.lastTick || Date.now())) / 1000;
-    const sps = totalSps();
-    if (away > 60 && sps > 0) {
-      const capped = Math.min(away, 8 * 3600);
-      const reward = sps * capped * 0.5;
-      S.stardust += reward;
-      S.totalEarned += reward;
-      const mins = Math.floor(away / 60);
-      const timeStr = mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`;
-      document.getElementById('modal-text').innerHTML =
-        `자리를 비운 <b>${timeStr}</b> 동안<br>친구들이 별가루를 모아뒀어요!<br><span class="reward">✨ +${fmt(reward)}</span>`;
-      document.getElementById('modal-overlay').classList.add('show');
-    }
+    grantOfflineReward(data.lastTick);
   } catch (e) { /* 손상된 세이브 무시 */ }
+}
+
+// 오프라인 수익 (최대 8시간, 50% 효율) — 로컬 로드·백업 복원·클라우드 불러오기 공통
+function grantOfflineReward(prevTick) {
+  const away = (Date.now() - (prevTick || Date.now())) / 1000;
+  const sps = totalSps();
+  if (away <= 60 || sps <= 0) return;
+  const capped = Math.min(away, 8 * 3600);
+  const reward = sps * capped * 0.5;
+  S.stardust += reward;
+  S.totalEarned += reward;
+  const mins = Math.floor(away / 60);
+  const timeStr = mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`;
+  document.getElementById('modal-text').innerHTML =
+    `자리를 비운 <b>${timeStr}</b> 동안<br>친구들이 별가루를 모아뒀어요!<br><span class="reward">✨ +${fmt(reward)}</span>`;
+  document.getElementById('modal-overlay').classList.add('show');
 }
 
 document.getElementById('modal-close').addEventListener('click', () => {
@@ -1120,10 +1261,12 @@ function decodeSave(code) {
 
 function applySave(data) {
   const base = freshState();
+  const prevTick = data.lastTick;
   S = { ...base, ...data, owned: { ...base.owned, ...(data.owned || {}) } };
   S.lastTick = Date.now();
   friendEls.forEach(el => el.remove());
   friendEls.clear();
+  grantOfflineReward(prevTick);
   save(true);
   renderShop();
   updateStats();
@@ -1329,6 +1472,7 @@ load();
 initStarfield();
 renderShop();
 updateStats();
+scheduleMeteor();
 requestAnimationFrame(loop);
 </script>
 </body>
