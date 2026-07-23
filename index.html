@@ -683,8 +683,10 @@
   /* ─── 모바일 세로 레이아웃 ─── */
   @media (max-width: 640px) {
     #game { flex-direction: column; }
-    #main-area { flex: 1 1 48%; min-height: 0; }
+    #main-area { flex: 1 1 48%; min-height: 0; padding-top: 46px; }
     #star-wrap { width: min(210px, 52vw); height: min(210px, 52vw); }
+    .util-btn { font-size: 14px; padding: 5px 10px; }
+    .util-btn .btn-label { display: none; }
     #shop {
       width: 100%;
       max-width: 100%;
@@ -739,12 +741,12 @@
     <div id="quote"></div>
 
     <div id="util-bar">
-      <button class="util-btn" id="btn-save">💾 저장</button>
-      <button class="util-btn" id="btn-export">📤 백업</button>
-      <button class="util-btn" id="btn-import">📥 복원</button>
-      <button class="util-btn" id="btn-cloud">☁️ 동기화</button>
-      <button class="util-btn" id="btn-sound"></button>
-      <button class="util-btn" id="btn-reset">🔄 초기화</button>
+      <button class="util-btn" id="btn-save">💾<span class="btn-label"> 저장</span></button>
+      <button class="util-btn" id="btn-export">📤<span class="btn-label"> 백업</span></button>
+      <button class="util-btn" id="btn-import">📥<span class="btn-label"> 복원</span></button>
+      <button class="util-btn" id="btn-cloud">☁️<span class="btn-label"> 동기화</span></button>
+      <button class="util-btn" id="btn-sound">🔊<span class="btn-label" id="sound-label"> 소리</span></button>
+      <button class="util-btn" id="btn-reset">🔄<span class="btn-label"> 초기화</span></button>
     </div>
   </div>
 
@@ -1471,25 +1473,49 @@ function toast(msg) {
 
 const friendEls = new Map();
 
+// 별 중심 타원 궤도의 좌·우 호에만 슬롯 배치
+// (위쪽은 별가루 카운터, 아래쪽은 명언 영역이라 비워둠)
+function positionFriends() {
+  const areaRect = $mainArea.getBoundingClientRect();
+  const starRect = $starWrap.getBoundingClientRect();
+  const cx = starRect.left - areaRect.left + starRect.width / 2;
+  const cy = starRect.top - areaRect.top + starRect.height / 2;
+  // 좌우로 넓고 위아래로 납작한 타원: 위 텍스트·아래 명언·별 본체를 모두 피함
+  const rx = Math.min(starRect.width * 0.85, areaRect.width / 2 - 34);
+  const ry = starRect.height * 0.55;
+  let i = 0;
+  for (const b of BUILDINGS) {
+    const el = friendEls.get(b.id);
+    if (!el) continue;
+    const side = i % 2;              // 오른쪽/왼쪽 호 번갈아
+    const k = Math.floor(i / 2);     // 호 안에서의 순번 (최대 7개씩)
+    const deg = side === 0 ? (-35 + k * 11.7) : (145 + k * 11.7);
+    const rad = deg * Math.PI / 180;
+    el.style.left = (cx + Math.cos(rad) * rx - 14) + 'px';
+    el.style.top = (cy + Math.sin(rad) * ry - 14) + 'px';
+    i++;
+  }
+}
+
 function updateFriends() {
+  let added = false;
   for (const b of BUILDINGS) {
     const has = S.owned[b.id] > 0;
     if (has && !friendEls.has(b.id)) {
       const el = document.createElement('div');
       el.className = 'friend';
       el.textContent = b.icon;
-      const angle = Math.random() * Math.PI * 2;
-      const rx = 38 + Math.random() * 8;
-      const ry = 30 + Math.random() * 10;
-      el.style.left = `calc(50% + ${Math.cos(angle) * rx}vmin - 14px)`;
-      el.style.top = `calc(46% + ${Math.sin(angle) * ry * 0.55}vmin - 14px)`;
       el.style.animationDelay = (Math.random() * 4) + 's';
       el.style.animationDuration = (5 + Math.random() * 3) + 's';
       $mainArea.appendChild(el);
       friendEls.set(b.id, el);
+      added = true;
     }
   }
+  if (added) positionFriends();
 }
+
+window.addEventListener('resize', positionFriends);
 
 /* ════════════════ 우주 친구들의 명언 ════════════════ */
 
@@ -1746,7 +1772,7 @@ document.getElementById('btn-save').addEventListener('click', () => save(false))
 const $btnSound = document.getElementById('btn-sound');
 
 function updateSoundBtn() {
-  $btnSound.textContent = soundOn ? '🔊 소리' : '🔇 소리';
+  $btnSound.innerHTML = (soundOn ? '🔊' : '🔇') + '<span class="btn-label"> 소리</span>';
 }
 
 $btnSound.addEventListener('click', () => {
