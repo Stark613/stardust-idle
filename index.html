@@ -336,12 +336,73 @@
 
   #modal button:active { transform: scale(0.94); }
 
+  /* ─── 백업/복원 모달 ─── */
+  #io-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 7, 24, 0.75);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  #io-overlay.show { display: flex; }
+
+  #io-modal {
+    background: var(--panel);
+    border: 2px solid var(--accent-mint);
+    border-radius: 22px;
+    padding: 26px 28px;
+    text-align: center;
+    width: min(420px, 92vw);
+    animation: modal-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  #io-modal h2 { font-size: 18px; margin-bottom: 6px; }
+  #io-modal p { font-size: 12.5px; color: var(--text-dim); line-height: 1.6; margin-bottom: 12px; }
+
+  #io-code {
+    width: 100%;
+    height: 110px;
+    background: rgba(11, 14, 42, 0.7);
+    border: 1.5px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    color: var(--accent-mint);
+    font-family: monospace;
+    font-size: 11px;
+    padding: 10px;
+    resize: none;
+    word-break: break-all;
+  }
+
+  #io-code:focus { outline: none; border-color: var(--accent-mint); }
+
+  #io-buttons { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
+
+  #io-buttons button {
+    border: none;
+    font-weight: 800;
+    font-size: 14px;
+    padding: 10px 22px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.1s;
+  }
+
+  #io-buttons button:active { transform: scale(0.94); }
+
+  #io-primary { background: linear-gradient(135deg, var(--accent-mint), #4dd6b0); color: #00382a; }
+  #io-cancel { background: var(--panel-light); color: var(--text); }
+
   /* ─── 하단 유틸 바 ─── */
   #util-bar {
     position: absolute;
     bottom: 12px;
     left: 12px;
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     z-index: 10;
   }
@@ -416,6 +477,8 @@
 
     <div id="util-bar">
       <button class="util-btn" id="btn-save">💾 저장</button>
+      <button class="util-btn" id="btn-export">📤 백업</button>
+      <button class="util-btn" id="btn-import">📥 복원</button>
       <button class="util-btn" id="btn-reset">🔄 초기화</button>
     </div>
   </div>
@@ -437,6 +500,18 @@
     <h2>어서와요, 우주 비행사!</h2>
     <p id="modal-text"></p>
     <button id="modal-close">받기! ✨</button>
+  </div>
+</div>
+
+<div id="io-overlay">
+  <div id="io-modal">
+    <h2 id="io-title"></h2>
+    <p id="io-desc"></p>
+    <textarea id="io-code" spellcheck="false"></textarea>
+    <div id="io-buttons">
+      <button id="io-primary"></button>
+      <button id="io-cancel">닫기</button>
+    </div>
   </div>
 </div>
 
@@ -898,6 +973,90 @@ document.getElementById('modal-close').addEventListener('click', () => {
 });
 
 document.getElementById('btn-save').addEventListener('click', () => save(false));
+
+/* ─── 세이브 코드 백업 / 복원 ─── */
+
+const SAVE_PREFIX = 'STAR1.';
+const $ioOverlay = document.getElementById('io-overlay');
+const $ioTitle = document.getElementById('io-title');
+const $ioDesc = document.getElementById('io-desc');
+const $ioCode = document.getElementById('io-code');
+const $ioPrimary = document.getElementById('io-primary');
+let ioMode = 'export';
+
+function encodeSave() {
+  S.lastTick = Date.now();
+  const json = JSON.stringify(S);
+  return SAVE_PREFIX + btoa(unescape(encodeURIComponent(json)));
+}
+
+function decodeSave(code) {
+  code = code.trim();
+  if (!code.startsWith(SAVE_PREFIX)) throw new Error('bad prefix');
+  const json = decodeURIComponent(escape(atob(code.slice(SAVE_PREFIX.length))));
+  const data = JSON.parse(json);
+  if (typeof data.stardust !== 'number' || typeof data.owned !== 'object') throw new Error('bad shape');
+  return data;
+}
+
+function applySave(data) {
+  const base = freshState();
+  S = { ...base, ...data, owned: { ...base.owned, ...(data.owned || {}) } };
+  S.lastTick = Date.now();
+  friendEls.forEach(el => el.remove());
+  friendEls.clear();
+  save(true);
+  renderShop();
+  updateStats();
+}
+
+document.getElementById('btn-export').addEventListener('click', () => {
+  ioMode = 'export';
+  $ioTitle.textContent = '📤 세이브 백업';
+  $ioDesc.textContent = '아래 코드를 복사해서 메모장 등에 보관하세요. 다른 기기의 "복원"에 붙여넣으면 이어서 플레이할 수 있어요!';
+  $ioCode.value = encodeSave();
+  $ioCode.readOnly = true;
+  $ioPrimary.textContent = '복사하기';
+  $ioOverlay.classList.add('show');
+  $ioCode.focus();
+  $ioCode.select();
+});
+
+document.getElementById('btn-import').addEventListener('click', () => {
+  ioMode = 'import';
+  $ioTitle.textContent = '📥 세이브 복원';
+  $ioDesc.textContent = '백업해 둔 세이브 코드를 아래에 붙여넣고 "불러오기"를 누르세요. 지금 진행 상황은 덮어써져요!';
+  $ioCode.value = '';
+  $ioCode.readOnly = false;
+  $ioPrimary.textContent = '불러오기';
+  $ioOverlay.classList.add('show');
+  $ioCode.focus();
+});
+
+$ioPrimary.addEventListener('click', async () => {
+  if (ioMode === 'export') {
+    try {
+      await navigator.clipboard.writeText($ioCode.value);
+      toast('📋 세이브 코드를 복사했어요!');
+    } catch (e) {
+      $ioCode.focus();
+      $ioCode.select();
+      const ok = document.execCommand && document.execCommand('copy');
+      toast(ok ? '📋 세이브 코드를 복사했어요!' : '⚠️ 복사 실패! 코드를 직접 선택해서 복사해주세요');
+    }
+  } else {
+    try {
+      applySave(decodeSave($ioCode.value));
+      $ioOverlay.classList.remove('show');
+      toast('✅ 세이브를 불러왔어요! 이어서 플레이하세요');
+    } catch (e) {
+      toast('⚠️ 올바른 세이브 코드가 아니에요. 다시 확인해주세요!');
+    }
+  }
+});
+
+document.getElementById('io-cancel').addEventListener('click', () => $ioOverlay.classList.remove('show'));
+$ioOverlay.addEventListener('click', e => { if (e.target === $ioOverlay) $ioOverlay.classList.remove('show'); });
 
 document.getElementById('btn-reset').addEventListener('click', () => {
   if (confirm('정말 처음부터 다시 시작할까요? 모든 진행이 사라져요! 🥺')) {
