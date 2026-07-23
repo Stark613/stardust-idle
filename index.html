@@ -87,6 +87,64 @@
     margin-top: 2px;
   }
 
+  #stage-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #8ab6ff;
+    margin-top: 4px;
+    cursor: pointer;
+  }
+
+  #stage-label:hover { text-decoration: underline; }
+
+  /* ─── 지도 탭 ─── */
+  .stage-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel-light);
+    border: 2px solid transparent;
+    border-radius: 14px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+
+  .stage-item.cleared { opacity: 0.6; }
+  .stage-item.current { border-color: var(--accent); }
+  .stage-item.locked-stage { opacity: 0.4; filter: grayscale(0.7); }
+
+  .stage-bar {
+    height: 10px;
+    background: rgba(11, 14, 42, 0.6);
+    border-radius: 999px;
+    overflow: hidden;
+    margin: 6px 0 4px;
+  }
+
+  .stage-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-mint), var(--accent));
+    border-radius: 999px;
+    transition: width 0.3s;
+  }
+
+  .stage-go {
+    border: none;
+    background: linear-gradient(135deg, var(--accent), #ffb347);
+    color: #3a2c00;
+    font-weight: 800;
+    font-family: inherit;
+    font-size: 13px;
+    padding: 9px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    flex-shrink: 0;
+    animation: nova-glow 2s ease-in-out infinite;
+    transition: transform 0.1s;
+  }
+
+  .stage-go:active { transform: scale(0.94); }
+
   #btn-supernova {
     margin-top: 10px;
     background: linear-gradient(135deg, var(--accent-pink), var(--accent));
@@ -577,6 +635,7 @@
       <div id="sps">✨ 초당 0 별가루</div>
       <div id="click-power-label">👆 클릭당 +1</div>
       <div id="essence-label" style="display:none"></div>
+      <div id="stage-label" title="지도 보기"></div>
       <button id="btn-supernova" style="display:none"></button>
     </div>
 
@@ -617,7 +676,8 @@
   <div id="shop">
     <div id="shop-tabs">
       <button class="tab active" data-tab="buildings">🏭 시설</button>
-      <button class="tab" data-tab="upgrades">⬆️ 업그레이드</button>
+      <button class="tab" data-tab="upgrades">⬆️ 업글</button>
+      <button class="tab" data-tab="map">🗺️ 지도</button>
     </div>
     <div id="shop-list"></div>
   </div>
@@ -713,6 +773,52 @@ const UPGRADES = [
   { id: 'allup2',   icon: '🎆', name: '축제 불꽃',       desc: '모든 시설 생산량 2배!',         cost: 5e9,    type: 'global', mult: 2,   unlock: s => totalOwned(s) >= 120 },
 ];
 
+/* ════════════════ 스테이지 (우주 항해 지도) ════════════════ */
+
+const STAGES = [
+  { icon: '🌱', name: '고향 정원 성운',   hue: 232 },
+  { icon: '🌙', name: '잠자는 달의 항구', hue: 260 },
+  { icon: '🍬', name: '사탕별 소행성대',  hue: 320 },
+  { icon: '🌈', name: '무지개 폭포 성운', hue: 190 },
+  { icon: '🧊', name: '얼음 수정 지대',   hue: 205 },
+  { icon: '🌋', name: '불꽃 용암 행성대', hue: 10 },
+  { icon: '🍄', name: '버섯 포자 은하',   hue: 280 },
+  { icon: '🎐', name: '바람의 종 성단',   hue: 160 },
+  { icon: '🕰️', name: '시간의 소용돌이', hue: 45 },
+  { icon: '🏛️', name: '고대 별의 유적',  hue: 35 },
+  { icon: '🌑', name: '그림자 경계선',    hue: 250 },
+  { icon: '🚪', name: '미지의 문',        hue: 300 },
+];
+
+// 12번째 이후는 끝없이 절차 생성되는 "미지의 세계"
+const MYST_ADJ  = ['빛나는', '속삭이는', '얼어붙은', '불타는', '잊혀진', '뒤틀린', '꿈꾸는', '숨겨진'];
+const MYST_NOUN = ['심연', '성운', '차원', '바다', '정원', '미궁', '왕국', '별무리'];
+const MYST_ICONS = ['🌀', '🌌', '🔮', '💠', '🌠', '🫧', '⚛️', '🪞'];
+
+function stageInfo(n) {
+  if (n < STAGES.length) return STAGES[n];
+  const k = n - STAGES.length;
+  return {
+    icon: MYST_ICONS[k % MYST_ICONS.length],
+    name: `${MYST_ADJ[k % MYST_ADJ.length]} ${MYST_NOUN[Math.floor(k / MYST_ADJ.length) % MYST_NOUN.length]} #${k + 1}`,
+    hue: (232 + (k + 1) * 47) % 360,
+  };
+}
+
+function stageGoal(n) {
+  return 300 * Math.pow(7, n);
+}
+
+function stageMult() {
+  return 1 + (S.stage || 0) * 0.05;
+}
+
+function applyStageTheme() {
+  const hue = stageInfo(S.stage).hue;
+  document.body.style.background =
+    `radial-gradient(ellipse at 50% 30%, hsl(${hue}, 42%, 17%) 0%, hsl(${hue}, 48%, 7%) 70%)`;
+}
+
 /* ════════════════ 상태 ════════════════ */
 
 const SAVE_KEY = 'stardust-idle-save-v1';
@@ -728,11 +834,20 @@ function freshState() {
     upgrades: [],
     essence: 0,
     resets: 0,
+    stage: 0,
+    stageEarned: 0,
     lastTick: Date.now(),
   };
 }
 
 let S = freshState();
+
+// 별가루 획득 공통 경로 (스테이지 진행도에 함께 반영)
+function earn(n) {
+  S.stardust += n;
+  S.totalEarned += n;
+  S.stageEarned += n;
+}
 
 function totalOwned(s) {
   return Object.values(s.owned).reduce((a, b) => a + b, 0);
@@ -770,7 +885,7 @@ function totalSps() {
   for (const b of BUILDINGS) {
     sum += b.sps * S.owned[b.id] * buildingMult(b.id);
   }
-  return sum * essenceMult();
+  return sum * essenceMult() * stageMult();
 }
 
 // 초신성 폭발 시 얻는 별의 정수 (이번 생의 누적 획득량 기준)
@@ -842,7 +957,7 @@ function renderShop() {
         <div class="item-cost ${canBuy ? '' : 'too-expensive'}">✨${fmt(cost)}</div>`;
       $shopList.appendChild(btn);
     }
-  } else {
+  } else if (activeTab === 'upgrades') {
     let shown = 0;
     for (const u of UPGRADES) {
       const bought = S.upgrades.includes(u.id);
@@ -867,12 +982,71 @@ function renderShop() {
       p.innerHTML = '아직 업그레이드가 없어요!<br>별을 더 클릭하고 시설을 모아보세요 🌟';
       $shopList.appendChild(p);
     }
+  } else if (activeTab === 'map') {
+    renderMap();
   }
+}
+
+function renderMap() {
+  const cur = S.stage;
+  for (let i = 0; i <= cur + 2; i++) {
+    const info = stageInfo(i);
+    const div = document.createElement('div');
+    if (i < cur) {
+      div.className = 'stage-item cleared';
+      div.innerHTML = `
+        <div class="item-icon">${info.icon}</div>
+        <div class="item-info">
+          <div class="item-name">STAGE ${i + 1} · ${info.name}</div>
+          <div class="item-desc">✅ 정복 완료 · 생산 +5%</div>
+        </div>`;
+    } else if (i === cur) {
+      const goal = stageGoal(i);
+      const pct = Math.min(100, S.stageEarned / goal * 100);
+      div.className = 'stage-item current';
+      div.innerHTML = `
+        <div class="item-icon">${info.icon}</div>
+        <div class="item-info">
+          <div class="item-name">STAGE ${i + 1} · ${info.name} <span class="owned">← 현재</span></div>
+          <div class="stage-bar"><div class="stage-bar-fill" id="stage-bar-fill" style="width:${pct}%"></div></div>
+          <div class="item-desc" id="stage-progress-text">이 구역에서 모은 별가루 ${fmt(S.stageEarned)} / ${fmt(goal)}</div>
+        </div>
+        <button class="stage-go" id="stage-go" data-go="1" style="${pct >= 100 ? '' : 'display:none'}">🚀 출발!</button>`;
+    } else {
+      const isNext = i === cur + 1;
+      div.className = 'stage-item locked-stage';
+      div.innerHTML = `
+        <div class="item-icon">${isNext ? '🌫️' : '❓'}</div>
+        <div class="item-info">
+          <div class="item-name">STAGE ${i + 1} · ???</div>
+          <div class="item-desc">${isNext ? '다음 목적지… 무엇이 기다릴까요?' : '아득한 미지의 세계'}</div>
+        </div>`;
+    }
+    $shopList.appendChild(div);
+  }
+  const hint = document.createElement('div');
+  hint.style.cssText = 'text-align:center;color:var(--text-dim);padding:14px 10px;font-size:12px;line-height:1.7';
+  hint.innerHTML = '지도는 끝없이 이어져요 🌌<br>스테이지를 정복할 때마다 생산 +5% 영구 보너스!<br>(진행도는 초신성 폭발에도 유지돼요)';
+  $shopList.appendChild(hint);
+}
+
+function advanceStage() {
+  if (S.stageEarned < stageGoal(S.stage)) return;
+  S.stage++;
+  S.stageEarned = 0;
+  applyStageTheme();
+  save(true);
+  renderShop();
+  updateStats();
+  happyFace();
+  const info = stageInfo(S.stage);
+  toast(`🚀 STAGE ${S.stage + 1} · ${info.name} 도착! 생산 +5%`);
 }
 
 /* ════════════════ 구매 ════════════════ */
 
 $shopList.addEventListener('click', e => {
+  if (e.target.closest('[data-go]')) { advanceStage(); return; }
   const btn = e.target.closest('.item');
   if (!btn) return;
   if (btn.dataset.buy) {
@@ -897,13 +1071,14 @@ $shopList.addEventListener('click', e => {
 
 /* ════════════════ 탭 ════════════════ */
 
+function activateTab(name) {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === name));
+  activeTab = name;
+  renderShop();
+}
+
 document.querySelectorAll('.tab').forEach(t => {
-  t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-    t.classList.add('active');
-    activeTab = t.dataset.tab;
-    renderShop();
-  });
+  t.addEventListener('click', () => activateTab(t.dataset.tab));
 });
 
 /* ════════════════ 클릭 ════════════════ */
@@ -912,8 +1087,7 @@ const SPARKS = ['✨', '⭐', '💫', '🌟'];
 
 function doClick(x, y) {
   const gain = clickPower();
-  S.stardust += gain;
-  S.totalEarned += gain;
+  earn(gain);
   S.totalClicks++;
 
   // +숫자 팝업
@@ -975,6 +1149,9 @@ function happyFace() {
 
 const $essenceLabel = document.getElementById('essence-label');
 const $btnSupernova = document.getElementById('btn-supernova');
+const $stageLabel = document.getElementById('stage-label');
+
+$stageLabel.addEventListener('click', () => activateTab('map'));
 
 function updateStats() {
   $count.textContent = '✨ ' + fmt(S.stardust);
@@ -987,6 +1164,9 @@ function updateStats() {
   } else {
     $essenceLabel.style.display = 'none';
   }
+
+  const info = stageInfo(S.stage);
+  $stageLabel.textContent = `🗺️ STAGE ${S.stage + 1} · ${info.icon} ${info.name}`;
 
   const gain = supernovaGain();
   if (gain >= 1) {
@@ -1005,12 +1185,16 @@ $btnSupernova.addEventListener('click', () => {
   const essence = S.essence + gain;
   const resets = S.resets + 1;
   const clicks = S.totalClicks;
+  const stage = S.stage;
+  const stageEarned = S.stageEarned;
   friendEls.forEach(el => el.remove());
   friendEls.clear();
   S = freshState();
   S.essence = essence;
   S.resets = resets;
   S.totalClicks = clicks;
+  S.stage = stage;
+  S.stageEarned = stageEarned;
   save(true);
   renderShop();
   updateStats();
@@ -1086,8 +1270,7 @@ function spawnMeteor() {
   m.addEventListener('pointerdown', e => {
     e.stopPropagation();
     const bonus = Math.max(clickPower() * 100, totalSps() * 120);
-    S.stardust += bonus;
-    S.totalEarned += bonus;
+    earn(bonus);
     const rect = $mainArea.getBoundingClientRect();
     const pop = document.createElement('div');
     pop.className = 'pop';
@@ -1154,10 +1337,7 @@ function loop(now) {
   lastFrame = now;
 
   const gain = totalSps() * dt;
-  if (gain > 0) {
-    S.stardust += gain;
-    S.totalEarned += gain;
-  }
+  if (gain > 0) earn(gain);
 
   updateStats();
   drawStarfield(now);
@@ -1167,11 +1347,25 @@ function loop(now) {
   shopDirtyTimer += dt;
   if (shopDirtyTimer > 0.25) {
     shopDirtyTimer = 0;
-    refreshShopAffordability();
-    // 새 건물/업그레이드 해금 감지
-    const listCount = $shopList.querySelectorAll('.item').length;
-    const expect = activeTab === 'buildings' ? visibleBuildingCount() : visibleUpgradeCount();
-    if (listCount !== expect) renderShop();
+    if (activeTab === 'map') {
+      // 진행 바만 제자리 갱신
+      const fill = document.getElementById('stage-bar-fill');
+      if (fill) {
+        const goal = stageGoal(S.stage);
+        const pct = Math.min(100, S.stageEarned / goal * 100);
+        fill.style.width = pct + '%';
+        const txt = document.getElementById('stage-progress-text');
+        if (txt) txt.textContent = `이 구역에서 모은 별가루 ${fmt(S.stageEarned)} / ${fmt(goal)}`;
+        const go = document.getElementById('stage-go');
+        if (go) go.style.display = pct >= 100 ? '' : 'none';
+      }
+    } else {
+      refreshShopAffordability();
+      // 새 건물/업그레이드 해금 감지
+      const listCount = $shopList.querySelectorAll('.item').length;
+      const expect = activeTab === 'buildings' ? visibleBuildingCount() : visibleUpgradeCount();
+      if (listCount !== expect) renderShop();
+    }
   }
 
   requestAnimationFrame(loop);
@@ -1219,8 +1413,7 @@ function grantOfflineReward(prevTick) {
   if (away <= 60 || sps <= 0) return;
   const capped = Math.min(away, 8 * 3600);
   const reward = sps * capped * 0.5;
-  S.stardust += reward;
-  S.totalEarned += reward;
+  earn(reward);
   const mins = Math.floor(away / 60);
   const timeStr = mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`;
   document.getElementById('modal-text').innerHTML =
@@ -1268,6 +1461,7 @@ function applySave(data) {
   friendEls.clear();
   grantOfflineReward(prevTick);
   save(true);
+  applyStageTheme();
   renderShop();
   updateStats();
 }
@@ -1457,6 +1651,7 @@ document.getElementById('btn-reset').addEventListener('click', () => {
     friendEls.forEach(el => el.remove());
     friendEls.clear();
     S = freshState();
+    applyStageTheme();
     renderShop();
     updateStats();
     toast('🌱 새로운 우주에서 다시 시작!');
@@ -1469,6 +1664,7 @@ window.addEventListener('beforeunload', () => save(true));
 /* ════════════════ 시작! ════════════════ */
 
 load();
+applyStageTheme();
 initStarfield();
 renderShop();
 updateStats();
