@@ -145,6 +145,44 @@
 
   .stage-go:active { transform: scale(0.94); }
 
+  /* ─── 기록 탭 ─── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .stat-card {
+    background: var(--panel-light);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+
+  .stat-name { font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+  .stat-val { font-size: 15px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+  .records-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text-dim);
+    margin: 6px 2px 8px;
+  }
+
+  .ach-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel-light);
+    border: 2px solid transparent;
+    border-radius: 14px;
+    padding: 9px 12px;
+    margin-bottom: 8px;
+  }
+
+  .ach-item.earned { border-color: var(--accent-mint); }
+  .ach-item.locked-ach { opacity: 0.45; filter: grayscale(0.7); }
+
   #btn-supernova {
     margin-top: 10px;
     background: linear-gradient(135deg, var(--accent-pink), var(--accent));
@@ -705,6 +743,7 @@
       <button class="util-btn" id="btn-export">📤 백업</button>
       <button class="util-btn" id="btn-import">📥 복원</button>
       <button class="util-btn" id="btn-cloud">☁️ 동기화</button>
+      <button class="util-btn" id="btn-sound"></button>
       <button class="util-btn" id="btn-reset">🔄 초기화</button>
     </div>
   </div>
@@ -714,6 +753,7 @@
       <button class="tab active" data-tab="buildings">🏭 시설</button>
       <button class="tab" data-tab="upgrades">⬆️ 업글</button>
       <button class="tab" data-tab="map">🗺️ 지도</button>
+      <button class="tab" data-tab="records">🏆 기록</button>
     </div>
     <div id="shop-list"></div>
   </div>
@@ -790,6 +830,10 @@ const BUILDINGS = [
   { id: 'comet',     icon: '☄️', name: '솜사탕 혜성',   desc: '달콤한 꼬리에서 별가루가 흩날려요',      baseCost: 3.3e8,   sps: 44000 },
   { id: 'galaxy',    icon: '🌌', name: '미니 은하',     desc: '주머니 속 은하가 별가루를 소용돌이쳐요', baseCost: 5.1e9,   sps: 260000 },
   { id: 'blackhole', icon: '🕳️', name: '아기 블랙홀',  desc: '얌얌~ 우주를 먹고 별가루를 뱉어내요',    baseCost: 7.5e10,  sps: 1.6e6 },
+  { id: 'cluster',   icon: '🎆', name: '초은하단',      desc: '은하들이 모여 별가루 축제를 열어요',     baseCost: 1e12,    sps: 1e7 },
+  { id: 'wormhole',  icon: '🌀', name: '아늑한 웜홀',   desc: '다른 우주의 별가루가 배달되어 와요',     baseCost: 1.4e13,  sps: 6.5e7 },
+  { id: 'whale',     icon: '🐋', name: '우주 고래',     desc: '노래할 때마다 별가루가 물결쳐요',        baseCost: 1.7e14,  sps: 4.3e8 },
+  { id: 'timestar',  icon: '⏳', name: '시간의 별',     desc: '어제와 내일의 별가루를 오늘로 모아요',   baseCost: 2.1e15,  sps: 2.9e9 },
 ];
 
 const UPGRADES = [
@@ -807,6 +851,9 @@ const UPGRADES = [
   { id: 'ufoup1',   icon: '👽', name: '외계어 사전',     desc: '외계인 친구 생산량 2배',        cost: 7e7,    type: 'building', target: 'ufo', mult: 2, unlock: s => s.owned.ufo >= 5 },
   { id: 'allup1',   icon: '🌈', name: '무지개 성운',     desc: '모든 시설 생산량 1.5배!',       cost: 1e8,    type: 'global', mult: 1.5, unlock: s => totalOwned(s) >= 60 },
   { id: 'allup2',   icon: '🎆', name: '축제 불꽃',       desc: '모든 시설 생산량 2배!',         cost: 5e9,    type: 'global', mult: 2,   unlock: s => totalOwned(s) >= 120 },
+  { id: 'clusterup1', icon: '🎇', name: '은하 폭죽',     desc: '초은하단 생산량 2배',           cost: 5e13,   type: 'building', target: 'cluster', mult: 2, unlock: s => s.owned.cluster >= 5 },
+  { id: 'whaleup1', icon: '🎵', name: '고래의 자장가',   desc: '우주 고래 생산량 2배',          cost: 8.5e15, type: 'building', target: 'whale', mult: 2, unlock: s => s.owned.whale >= 5 },
+  { id: 'allup3',   icon: '⏳', name: '시공 초월',       desc: '모든 시설 생산량 2배!',         cost: 1e14,   type: 'global', mult: 2,   unlock: s => totalOwned(s) >= 250 },
 ];
 
 /* ════════════════ 스테이지 (우주 항해 지도) ════════════════ */
@@ -872,17 +919,22 @@ function freshState() {
     resets: 0,
     stage: 0,
     stageEarned: 0,
+    achievements: [],
+    meteorsCaught: 0,
+    playTime: 0,
+    lifetimeEarned: 0,
     lastTick: Date.now(),
   };
 }
 
 let S = freshState();
 
-// 별가루 획득 공통 경로 (스테이지 진행도에 함께 반영)
+// 별가루 획득 공통 경로 (스테이지 진행도·평생 누적에 함께 반영)
 function earn(n) {
   S.stardust += n;
   S.totalEarned += n;
   S.stageEarned += n;
+  S.lifetimeEarned += n;
 }
 
 function totalOwned(s) {
@@ -921,7 +973,89 @@ function totalSps() {
   for (const b of BUILDINGS) {
     sum += b.sps * S.owned[b.id] * buildingMult(b.id);
   }
-  return sum * essenceMult() * stageMult();
+  return sum * essenceMult() * stageMult() * achMult();
+}
+
+/* ════════════════ 업적 ════════════════ */
+
+const ACHIEVEMENTS = [
+  { id: 'click100',  icon: '👆', name: '콕콕콕',            desc: '100번 클릭하기',           cond: s => s.totalClicks >= 100 },
+  { id: 'click1k',   icon: '🖱️', name: '손가락 유성',       desc: '1,000번 클릭하기',         cond: s => s.totalClicks >= 1000 },
+  { id: 'click10k',  icon: '⚡', name: '광속의 손',          desc: '10,000번 클릭하기',        cond: s => s.totalClicks >= 10000 },
+  { id: 'build1',    icon: '⭐', name: '첫 친구',            desc: '첫 시설 구매하기',         cond: s => totalOwned(s) >= 1 },
+  { id: 'build50',   icon: '🏘️', name: '북적북적 우주',     desc: '시설 50개 보유하기',       cond: s => totalOwned(s) >= 50 },
+  { id: 'build150',  icon: '🌆', name: '별가루 대도시',      desc: '시설 150개 보유하기',      cond: s => totalOwned(s) >= 150 },
+  { id: 'black1',    icon: '🕳️', name: '얌얌 블랙홀',       desc: '아기 블랙홀 입양하기',     cond: s => s.owned.blackhole >= 1 },
+  { id: 'time1',     icon: '⏳', name: '시간을 담는 자',     desc: '시간의 별 보유하기',       cond: s => s.owned.timestar >= 1 },
+  { id: 'up10',      icon: '⬆️', name: '강화 장인',          desc: '업그레이드 10종 구매하기', cond: s => s.upgrades.length >= 10 },
+  { id: 'nova1',     icon: '💥', name: '첫 초신성',          desc: '처음으로 환생하기',        cond: s => s.resets >= 1 },
+  { id: 'nova5',     icon: '🌠', name: '불사조 별',          desc: '5번 환생하기',             cond: s => s.resets >= 5 },
+  { id: 'ess50',     icon: '🌟', name: '정수 수집가',        desc: '별의 정수 50개 모으기',    cond: s => s.essence >= 50 },
+  { id: 'stage3',    icon: '🍬', name: '달콤한 항해',        desc: 'STAGE 3 도달하기',         cond: s => s.stage >= 2 },
+  { id: 'stage6',    icon: '🌋', name: '용암도 안 무서워',   desc: 'STAGE 6 도달하기',         cond: s => s.stage >= 5 },
+  { id: 'stage12',   icon: '🚪', name: '미지의 문을 연 자',  desc: 'STAGE 12 도달하기',        cond: s => s.stage >= 11 },
+  { id: 'unknown1',  icon: '🌀', name: '지도 밖으로',        desc: '미지의 세계에 진입하기',   cond: s => s.stage >= 12 },
+  { id: 'met1',      icon: '☄️', name: '행운의 포수',        desc: '골든 혜성 잡기',           cond: s => s.meteorsCaught >= 1 },
+  { id: 'met25',     icon: '🎯', name: '혜성 사냥꾼',        desc: '골든 혜성 25번 잡기',      cond: s => s.meteorsCaught >= 25 },
+  { id: 'life1e9',   icon: '💰', name: '억만장자 별',        desc: '평생 10억 별가루 모으기',  cond: s => s.lifetimeEarned >= 1e9 },
+  { id: 'play1h',    icon: '⏰', name: '단골 우주인',        desc: '1시간 플레이하기',         cond: s => s.playTime >= 3600 },
+];
+
+// 업적 1개당 모든 생산 +1%
+function achMult() {
+  return 1 + (S.achievements ? S.achievements.length : 0) * 0.01;
+}
+
+function checkAchievements() {
+  for (const a of ACHIEVEMENTS) {
+    if (S.achievements.includes(a.id) || !a.cond(S)) continue;
+    S.achievements.push(a.id);
+    toast(`🏆 업적 달성: ${a.icon} ${a.name}!`);
+    sfx('ach');
+    if (activeTab === 'records') renderShop();
+  }
+}
+
+/* ════════════════ 효과음 (WebAudio, 파일 없이 합성) ════════════════ */
+
+const SOUND_KEY = 'stardust-idle-sound-v1';
+let soundOn = localStorage.getItem(SOUND_KEY) !== '0';
+let audioCtx = null;
+
+function ac() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  } catch (e) { return null; }
+}
+
+function tone(freq, dur, opt = {}) {
+  const ctx = ac();
+  if (!ctx) return;
+  const t0 = ctx.currentTime + (opt.delay || 0);
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = opt.type || 'sine';
+  o.frequency.setValueAtTime(freq, t0);
+  if (opt.slide) o.frequency.exponentialRampToValueAtTime(opt.slide, t0 + dur);
+  g.gain.setValueAtTime(opt.vol || 0.12, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  o.connect(g).connect(ctx.destination);
+  o.start(t0);
+  o.stop(t0 + dur + 0.05);
+}
+
+function sfx(kind) {
+  if (!soundOn) return;
+  switch (kind) {
+    case 'click':  tone(520 + Math.random() * 120, 0.07, { type: 'triangle', vol: 0.05 }); break;
+    case 'buy':    tone(440, 0.09, { vol: 0.09 }); tone(660, 0.12, { delay: 0.08, vol: 0.09 }); break;
+    case 'meteor': tone(1400, 0.35, { slide: 300, vol: 0.11 }); tone(2000, 0.2, { delay: 0.05, slide: 900, vol: 0.05 }); break;
+    case 'stage':  [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.14, { delay: i * 0.09, vol: 0.09 })); break;
+    case 'nova':   tone(220, 0.7, { type: 'sawtooth', slide: 55, vol: 0.12 }); tone(880, 0.5, { delay: 0.1, slide: 1760, vol: 0.05 }); break;
+    case 'ach':    [660, 880, 1320].forEach((f, i) => tone(f, 0.12, { delay: i * 0.08, vol: 0.09 })); break;
+  }
 }
 
 // 초신성 폭발 시 얻는 별의 정수 (이번 생의 누적 획득량 기준)
@@ -1020,6 +1154,67 @@ function renderShop() {
     }
   } else if (activeTab === 'map') {
     renderMap();
+  } else if (activeTab === 'records') {
+    renderRecords();
+  }
+}
+
+function playTimeStr() {
+  const t = Math.floor(S.playTime || 0);
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60);
+  return h > 0 ? `${h}시간 ${m}분` : `${m}분`;
+}
+
+function recordStats() {
+  return [
+    ['dust',   '✨ 보유 별가루', fmt(S.stardust)],
+    ['life',   '🌌 평생 누적',   fmt(S.lifetimeEarned)],
+    ['clicks', '👆 총 클릭',     S.totalClicks.toLocaleString('ko-KR') + '번'],
+    ['time',   '⏰ 플레이 시간', playTimeStr()],
+    ['resets', '💥 환생 횟수',   S.resets + '번'],
+    ['ess',    '🌟 별의 정수',   S.essence + '개'],
+    ['met',    '☄️ 혜성 포획',   S.meteorsCaught + '번'],
+    ['stage',  '🗺️ 현재 지역',  'STAGE ' + (S.stage + 1)],
+    ['built',  '🏭 보유 시설',   totalOwned(S) + '개'],
+    ['ach',    '🏆 업적 보너스', `${S.achievements.length}/${ACHIEVEMENTS.length} (+${S.achievements.length}%)`],
+  ];
+}
+
+function renderRecords() {
+  const grid = document.createElement('div');
+  grid.className = 'stat-grid';
+  for (const [key, name, val] of recordStats()) {
+    const card = document.createElement('div');
+    card.className = 'stat-card';
+    card.innerHTML = `<div class="stat-name">${name}</div><div class="stat-val" data-stat="${key}">${val}</div>`;
+    grid.appendChild(card);
+  }
+  $shopList.appendChild(grid);
+
+  const title = document.createElement('div');
+  title.className = 'records-title';
+  title.textContent = `🏆 업적 (달성한 업적 1개당 생산 +1%)`;
+  $shopList.appendChild(title);
+
+  for (const a of ACHIEVEMENTS) {
+    const earned = S.achievements.includes(a.id);
+    const div = document.createElement('div');
+    div.className = 'ach-item ' + (earned ? 'earned' : 'locked-ach');
+    div.innerHTML = `
+      <div class="item-icon">${earned ? a.icon : '🔒'}</div>
+      <div class="item-info">
+        <div class="item-name">${a.name}</div>
+        <div class="item-desc">${a.desc}</div>
+      </div>
+      ${earned ? '<div class="item-cost" style="color:var(--accent-mint)">달성!</div>' : ''}`;
+    $shopList.appendChild(div);
+  }
+}
+
+function updateRecordStats() {
+  for (const [key, , val] of recordStats()) {
+    const el = $shopList.querySelector(`[data-stat="${key}"]`);
+    if (el) el.textContent = val;
   }
 }
 
@@ -1077,6 +1272,7 @@ function advanceStage() {
   happyFace();
   const info = stageInfo(S.stage);
   toast(`🚀 STAGE ${S.stage + 1} · ${info.name} 도착! 생산 +5%`);
+  sfx('stage');
   showQuote(pickQuote(STAGE_QUOTES));
 }
 
@@ -1093,6 +1289,7 @@ $shopList.addEventListener('click', e => {
     S.stardust -= cost;
     S.owned[b.id]++;
     toast(`${b.icon} ${b.name} 획득! (${S.owned[b.id]}개)`);
+    sfx('buy');
     happyFace();
     renderShop();
   } else if (btn.dataset.upgrade) {
@@ -1101,6 +1298,7 @@ $shopList.addEventListener('click', e => {
     S.stardust -= u.cost;
     S.upgrades.push(u.id);
     toast(`${u.icon} ${u.name} 구매! ${u.desc}`);
+    sfx('buy');
     happyFace();
     renderShop();
   }
@@ -1126,6 +1324,7 @@ function doClick(x, y) {
   const gain = clickPower();
   earn(gain);
   S.totalClicks++;
+  sfx('click');
 
   // +숫자 팝업
   const pop = document.createElement('div');
@@ -1219,24 +1418,28 @@ $btnSupernova.addEventListener('click', () => {
   if (gain < 1) return;
   const msg = `💥 초신성 폭발!\n\n별가루·시설·업그레이드가 모두 사라지는 대신\n🌟 별의 정수 ${gain}개를 얻어요.\n(정수 1개당 모든 획득량 +2%, 영구 지속)\n\n새로운 별로 다시 태어날까요?`;
   if (!confirm(msg)) return;
-  const essence = S.essence + gain;
-  const resets = S.resets + 1;
-  const clicks = S.totalClicks;
-  const stage = S.stage;
-  const stageEarned = S.stageEarned;
+  // 환생해도 유지되는 메타 진행 (정수·지도·기록·업적)
+  const keep = {
+    essence: S.essence + gain,
+    resets: S.resets + 1,
+    totalClicks: S.totalClicks,
+    stage: S.stage,
+    stageEarned: S.stageEarned,
+    achievements: S.achievements.slice(),
+    meteorsCaught: S.meteorsCaught,
+    playTime: S.playTime,
+    lifetimeEarned: S.lifetimeEarned,
+  };
   friendEls.forEach(el => el.remove());
   friendEls.clear();
-  S = freshState();
-  S.essence = essence;
-  S.resets = resets;
-  S.totalClicks = clicks;
-  S.stage = stage;
-  S.stageEarned = stageEarned;
+  S = Object.assign(freshState(), keep);
+  const essence = keep.essence;
   save(true);
   renderShop();
   updateStats();
   happyFace();
   toast(`💥 초신성 폭발! 🌟 별의 정수 +${gain} (총 ${essence}개)`);
+  sfx('nova');
   showQuote(pickQuote(NOVA_QUOTES));
 });
 
@@ -1377,6 +1580,8 @@ function spawnMeteor() {
     e.stopPropagation();
     const bonus = Math.max(clickPower() * 100, totalSps() * 120);
     earn(bonus);
+    S.meteorsCaught++;
+    sfx('meteor');
     const rect = $mainArea.getBoundingClientRect();
     const pop = document.createElement('div');
     pop.className = 'pop';
@@ -1444,6 +1649,7 @@ function loop(now) {
 
   const gain = totalSps() * dt;
   if (gain > 0) earn(gain);
+  S.playTime += dt;
 
   updateStats();
   drawStarfield(now);
@@ -1453,7 +1659,10 @@ function loop(now) {
   shopDirtyTimer += dt;
   if (shopDirtyTimer > 0.25) {
     shopDirtyTimer = 0;
-    if (activeTab === 'map') {
+    checkAchievements();
+    if (activeTab === 'records') {
+      updateRecordStats();
+    } else if (activeTab === 'map') {
       // 진행 바만 제자리 갱신
       const fill = document.getElementById('stage-bar-fill');
       if (fill) {
@@ -1508,6 +1717,7 @@ function load() {
     const data = JSON.parse(raw);
     const base = freshState();
     S = { ...base, ...data, owned: { ...base.owned, ...(data.owned || {}) } };
+    S.lifetimeEarned = Math.max(S.lifetimeEarned, S.totalEarned); // 구버전 세이브 보정
     grantOfflineReward(data.lastTick);
   } catch (e) { /* 손상된 세이브 무시 */ }
 }
@@ -1532,6 +1742,22 @@ document.getElementById('modal-close').addEventListener('click', () => {
 });
 
 document.getElementById('btn-save').addEventListener('click', () => save(false));
+
+const $btnSound = document.getElementById('btn-sound');
+
+function updateSoundBtn() {
+  $btnSound.textContent = soundOn ? '🔊 소리' : '🔇 소리';
+}
+
+$btnSound.addEventListener('click', () => {
+  soundOn = !soundOn;
+  try { localStorage.setItem(SOUND_KEY, soundOn ? '1' : '0'); } catch (e) {}
+  updateSoundBtn();
+  if (soundOn) sfx('buy');
+  toast(soundOn ? '🔊 효과음 켜짐!' : '🔇 효과음 꺼짐');
+});
+
+updateSoundBtn();
 
 /* ─── 세이브 코드 백업 / 복원 ─── */
 
@@ -1562,6 +1788,7 @@ function applySave(data) {
   const base = freshState();
   const prevTick = data.lastTick;
   S = { ...base, ...data, owned: { ...base.owned, ...(data.owned || {}) } };
+  S.lifetimeEarned = Math.max(S.lifetimeEarned, S.totalEarned); // 구버전 세이브 보정
   S.lastTick = Date.now();
   friendEls.forEach(el => el.remove());
   friendEls.clear();
