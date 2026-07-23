@@ -11,8 +11,13 @@
 
 const SHEET_NAME = 'saves';
 
+// 시트의 "확장 프로그램 → Apps Script"에서 만들었다면 비워두세요.
+// script.google.com에서 독립 프로젝트로 만들었다면 세이브를 저장할
+// 스프레드시트의 ID(주소창의 /d/ 와 /edit 사이 문자열)를 넣으세요.
+const SHEET_ID = '';
+
 function getSheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SHEET_ID ? SpreadsheetApp.openById(SHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(SHEET_NAME);
   if (!sh) {
     sh = ss.insertSheet(SHEET_NAME);
