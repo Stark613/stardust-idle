@@ -156,6 +156,42 @@
   .stat-plus:active { transform: scale(0.9); }
   .stat-plus:disabled { opacity: 0.3; cursor: default; }
 
+  /* ─── 유물 도감 ─── */
+  .relic-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .relic-card {
+    background: var(--panel-light);
+    border: 2px solid;
+    border-radius: 12px;
+    padding: 9px 11px;
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+
+  .relic-card:not(.locked-relic):active { transform: scale(0.96); }
+  .relic-card.locked-relic { opacity: 0.35; cursor: default; filter: grayscale(0.8); }
+
+  .relic-head { display: flex; align-items: center; gap: 6px; }
+  .relic-icon { font-size: 22px; }
+  .relic-rarity { font-size: 10.5px; font-weight: 800; }
+
+  .relic-badge {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--accent-mint);
+    background: rgba(125, 243, 212, 0.12);
+    border-radius: 999px;
+    padding: 2px 7px;
+  }
+
+  .relic-name { font-size: 12.5px; font-weight: 700; margin-top: 4px; }
+  .relic-eff { font-size: 11px; color: var(--text-dim); margin-top: 2px; line-height: 1.45; }
+
   @media (max-width: 640px) {
     .tab { font-size: 12px; padding: 11px 2px; }
   }
@@ -1084,6 +1120,8 @@ function freshState() {
     xp: 0,
     statPoints: 0,
     stats: { str: 0, wis: 0, luck: 0, charm: 0 },
+    relics: [],
+    equipped: [],
     lastTick: Date.now(),
   };
 }
@@ -1116,6 +1154,8 @@ function sanitizeSave(d) {
   out.xp = num(d.xp);
   out.statPoints = Math.floor(num(d.statPoints));
   for (const k of ['str', 'wis', 'luck', 'charm']) out.stats[k] = Math.floor(num(d.stats && d.stats[k]));
+  if (Array.isArray(d.relics)) out.relics = [...new Set(d.relics.filter(id => RELICS.some(r => r.id === id)))];
+  if (Array.isArray(d.equipped)) out.equipped = [...new Set(d.equipped.filter(id => out.relics.includes(id)))].slice(0, 3);
   out.lifetimeEarned = Math.max(out.lifetimeEarned, out.totalEarned);
   return out;
 }
@@ -1149,6 +1189,88 @@ function essenceMult() {
   return 1 + (S.essence || 0) * 0.02;
 }
 
+/* ─── 우주 유물 (Phase 3-B) ─── */
+
+const RARITY = {
+  common:    { name: '일반', color: '#b9c0e8', weight: 0.60 },
+  rare:      { name: '희귀', color: '#7df3d4', weight: 0.25 },
+  epic:      { name: '영웅', color: '#ff9ecf', weight: 0.12 },
+  legendary: { name: '전설', color: '#ffd966', weight: 0.03 },
+};
+
+const RELICS = [
+  { id: 'spoon',   icon: '🥄', name: '은하수 숟가락',   rarity: 'common',    effects: [{ t: 'click', v: 0.10 }] },
+  { id: 'sock',    icon: '🧦', name: '포근한 털양말',   rarity: 'common',    effects: [{ t: 'sps', v: 0.08 }] },
+  { id: 'pebble',  icon: '🪨', name: '반짝 조약돌',     rarity: 'common',    effects: [{ t: 'xp', v: 0.10 }] },
+  { id: 'balloon', icon: '🎈', name: '꼬마 풍선',       rarity: 'common',    effects: [{ t: 'meteor', v: 0.15 }] },
+  { id: 'bell',    icon: '🔔', name: '유성의 방울',     rarity: 'rare',      effects: [{ t: 'crit', v: 0.03 }] },
+  { id: 'scarf',   icon: '🧣', name: '혜성 목도리',     rarity: 'rare',      effects: [{ t: 'meteor', v: 0.40 }] },
+  { id: 'book',    icon: '📖', name: '별자리 도감',     rarity: 'rare',      effects: [{ t: 'xp', v: 0.25 }] },
+  { id: 'coupon',  icon: '🛍️', name: '우주 상인의 쿠폰', rarity: 'rare',     effects: [{ t: 'disc', v: 0.08 }] },
+  { id: 'glasses', icon: '👓', name: '시공 안경',       rarity: 'epic',      effects: [{ t: 'sps', v: 0.25 }] },
+  { id: 'glove',   icon: '🥊', name: '운석 글러브',     rarity: 'epic',      effects: [{ t: 'click', v: 0.35 }, { t: 'crit', v: 0.02 }] },
+  { id: 'clock',   icon: '⏰', name: '뻐꾸기 별시계',   rarity: 'epic',      effects: [{ t: 'offlineCap', v: 4 }] },
+  { id: 'trumpet', icon: '🎺', name: '성운 나팔',       rarity: 'epic',      effects: [{ t: 'critMult', v: 5 }] },
+  { id: 'crown',   icon: '👑', name: '고대 별의 왕관',  rarity: 'legendary', effects: [{ t: 'sps', v: 0.60 }] },
+  { id: 'sword',   icon: '🗡️', name: '초신성 검',      rarity: 'legendary', effects: [{ t: 'click', v: 1.00 }] },
+  { id: 'heart',   icon: '🫀', name: '은하의 심장',     rarity: 'legendary', effects: [{ t: 'essence', v: 0.25 }] },
+  { id: 'egg',     icon: '🐣', name: '아기 우주 알',    rarity: 'legendary', effects: [{ t: 'meteor', v: 1.50 }, { t: 'meteorSpeed', v: 0.15 }] },
+];
+
+const EFF_TEXT = {
+  click:       v => `클릭 +${Math.round(v * 100)}%`,
+  sps:         v => `생산 +${Math.round(v * 100)}%`,
+  xp:          v => `경험치 +${Math.round(v * 100)}%`,
+  meteor:      v => `혜성 보상 +${Math.round(v * 100)}%`,
+  crit:        v => `크리 확률 +${(v * 100).toFixed(0)}%p`,
+  critMult:    v => `크리 배율 +${v}`,
+  disc:        v => `구매 할인 +${Math.round(v * 100)}%`,
+  offlineCap:  v => `방치 한도 +${v}시간`,
+  essence:     v => `정수 획득 +${Math.round(v * 100)}%`,
+  meteorSpeed: v => `혜성 출현 ${Math.round(v * 100)}% 빨라짐`,
+};
+
+function relicEffText(r) {
+  return r.effects.map(e => EFF_TEXT[e.t](e.v)).join(' · ');
+}
+
+// 장착 중인 유물들의 효과 합산
+function relicVal(t) {
+  let v = 0;
+  for (const id of S.equipped) {
+    const r = RELICS.find(x => x.id === id);
+    if (!r) continue;
+    for (const e of r.effects) if (e.t === t) v += e.v;
+  }
+  return v;
+}
+
+function rollRarity() {
+  const roll = Math.random();
+  if (roll < RARITY.legendary.weight) return 'legendary';
+  if (roll < RARITY.legendary.weight + RARITY.epic.weight) return 'epic';
+  if (roll < RARITY.legendary.weight + RARITY.epic.weight + RARITY.rare.weight) return 'rare';
+  return 'common';
+}
+
+function dropRelic(chance) {
+  if (Math.random() > chance) return;
+  const rarity = rollRarity();
+  const pool = RELICS.filter(r => r.rarity === rarity);
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  if (S.relics.includes(pick.id)) {
+    const refund = Math.max(clickPower() * 50, totalSps() * 300);
+    earn(refund);
+    toast(`💫 ${pick.icon} ${pick.name} 중복! ✨${fmt(refund)}(으)로 변환`);
+    return;
+  }
+  S.relics.push(pick.id);
+  if (S.equipped.length < 3) S.equipped.push(pick.id); // 빈 슬롯이면 자동 장착
+  toast(`🎁 유물 획득: ${pick.icon} ${pick.name} [${RARITY[rarity].name}]!`);
+  sfx('ach');
+  if (activeTab === 'growth') renderShop();
+}
+
 /* ─── 스탯 (Phase 3-A) ─── */
 
 const STATS = [
@@ -1160,9 +1282,10 @@ const STATS = [
 
 function strMult()  { return 1 + S.stats.str * 0.05; }
 function wisMult()  { return 1 + S.stats.wis * 0.03; }
-function charmDisc() { return 1 - Math.min(0.4, S.stats.charm * 0.01); }
-function critChance() { return Math.min(0.35, 0.01 + S.stats.luck * 0.005); }
-function meteorSpeedup() { return Math.min(0.5, S.stats.luck * 0.01); }
+function charmDisc() { return 1 - Math.min(0.6, Math.min(0.4, S.stats.charm * 0.01) + relicVal('disc')); }
+function critChance() { return Math.min(0.6, Math.min(0.35, 0.01 + S.stats.luck * 0.005) + relicVal('crit')); }
+function critMult() { return 10 + relicVal('critMult'); }
+function meteorSpeedup() { return Math.min(0.7, Math.min(0.5, S.stats.luck * 0.01) + relicVal('meteorSpeed')); }
 
 // 레벨업에 필요한 경험치 (레벨이 오를수록 완만하게 증가)
 function xpNeed(level) {
@@ -1170,7 +1293,7 @@ function xpNeed(level) {
 }
 
 function addXp(n) {
-  S.xp += n;
+  S.xp += n * (1 + relicVal('xp'));
   while (S.xp >= xpNeed(S.level)) {
     S.xp -= xpNeed(S.level);
     S.level++;
@@ -1187,7 +1310,7 @@ function clickPower() {
     if (u && u.type === 'click') p *= u.mult;
   }
   // 초당 생산량의 1%도 클릭에 보태줘요 (후반 클릭 재미 유지)
-  return p * essenceMult() * strMult() + totalSps() * 0.01;
+  return p * essenceMult() * strMult() * (1 + relicVal('click')) + totalSps() * 0.01;
 }
 
 function totalSps() {
@@ -1195,7 +1318,7 @@ function totalSps() {
   for (const b of BUILDINGS) {
     sum += b.sps * S.owned[b.id] * buildingMult(b.id);
   }
-  return sum * essenceMult() * stageMult() * achMult() * wisMult();
+  return sum * essenceMult() * stageMult() * achMult() * wisMult() * (1 + relicVal('sps'));
 }
 
 /* ════════════════ 업적 ════════════════ */
@@ -1217,6 +1340,8 @@ const ACHIEVEMENTS = [
   { id: 'stage6',    icon: '🌋', name: '용암도 안 무서워',   desc: 'STAGE 6 도달하기',         cond: s => s.stage >= 5 },
   { id: 'stage12',   icon: '🚪', name: '미지의 문을 연 자',  desc: 'STAGE 12 도달하기',        cond: s => s.stage >= 11 },
   { id: 'unknown1',  icon: '🌀', name: '지도 밖으로',        desc: '미지의 세계에 진입하기',   cond: s => s.stage >= 12 },
+  { id: 'relic1',    icon: '🎁', name: '첫 유물',            desc: '유물 1개 획득하기',        cond: s => s.relics.length >= 1 },
+  { id: 'relic8',    icon: '🗡️', name: '유물 수집가',       desc: '유물 8종 모으기',          cond: s => s.relics.length >= 8 },
   { id: 'lv10',      icon: '⭐', name: '자라나는 별',        desc: '레벨 10 달성하기',         cond: s => s.level >= 10 },
   { id: 'lv30',      icon: '🌠', name: '어엿한 별',          desc: '레벨 30 달성하기',         cond: s => s.level >= 30 },
   { id: 'met1',      icon: '☄️', name: '행운의 포수',        desc: '골든 혜성 잡기',           cond: s => s.meteorsCaught >= 1 },
@@ -1236,6 +1361,7 @@ function checkAchievements() {
     S.achievements.push(a.id);
     toast(`🏆 업적 달성: ${a.icon} ${a.name}!`);
     sfx('ach');
+    dropRelic(0.5); // 업적 달성 시 유물 드랍 확률 50%
     if (activeTab === 'records') renderShop();
   }
 }
@@ -1283,9 +1409,9 @@ function sfx(kind) {
   }
 }
 
-// 초신성 폭발 시 얻는 별의 정수 (이번 생의 누적 획득량 기준)
+// 초신성 폭발 시 얻는 별의 정수 (이번 생의 누적 획득량 기준, 유물 보너스 적용)
 function supernovaGain() {
-  return Math.floor(Math.sqrt(S.totalEarned / 1e6));
+  return Math.floor(Math.sqrt(S.totalEarned / 1e6) * (1 + relicVal('essence')));
 }
 
 function buildingCost(b) {
@@ -1462,6 +1588,41 @@ function renderGrowth() {
       레벨과 스탯은 초신성 환생에도 유지돼요!
     </div>`;
   $shopList.appendChild(effect);
+
+  // ─ 유물 도감
+  const title = document.createElement('div');
+  title.className = 'records-title';
+  title.textContent = `🗡️ 우주 유물 — 장착 ${S.equipped.length}/3 · 보유 ${S.relics.length}/${RELICS.length}`;
+  $shopList.appendChild(title);
+
+  const hint = document.createElement('div');
+  hint.className = 'item-desc';
+  hint.style.cssText = 'margin:0 2px 8px;line-height:1.6';
+  hint.textContent = '☄️ 혜성 · 🏆 업적 · 🚀 새 지역 도착에서 드랍! 유물을 눌러 장착/해제하세요. (환생에도 유지)';
+  $shopList.appendChild(hint);
+
+  const grid = document.createElement('div');
+  grid.className = 'relic-grid';
+  for (const r of RELICS) {
+    const owned = S.relics.includes(r.id);
+    const equipped = S.equipped.includes(r.id);
+    const rar = RARITY[r.rarity];
+    const card = document.createElement('div');
+    card.className = 'relic-card' + (owned ? '' : ' locked-relic') + (equipped ? ' relic-equipped' : '');
+    card.style.borderColor = rar.color;
+    if (equipped) card.style.boxShadow = `0 0 10px ${rar.color}`;
+    if (owned) card.dataset.relic = r.id;
+    card.innerHTML = `
+      <div class="relic-head">
+        <span class="relic-icon">${owned ? r.icon : '❓'}</span>
+        <span class="relic-rarity" style="color:${rar.color}">${rar.name}</span>
+        ${equipped ? '<span class="relic-badge">장착중</span>' : ''}
+      </div>
+      <div class="relic-name">${owned ? r.name : '???'}</div>
+      <div class="relic-eff">${owned ? relicEffText(r) : '아직 발견하지 못했어요'}</div>`;
+    grid.appendChild(card);
+  }
+  $shopList.appendChild(grid);
 }
 
 function playTimeStr() {
@@ -1477,6 +1638,7 @@ function recordStats() {
     ['clicks', '👆 총 클릭',     S.totalClicks.toLocaleString('ko-KR') + '번'],
     ['time',   '⏰ 플레이 시간', playTimeStr()],
     ['level',  '⭐ 레벨',        'Lv.' + S.level],
+    ['relics', '🗡️ 유물',       `${S.relics.length}/${RELICS.length}`],
     ['resets', '💥 환생 횟수',   S.resets + '번'],
     ['ess',    '🌟 별의 정수',   S.essence + '개'],
     ['met',    '☄️ 혜성 포획',   S.meteorsCaught + '번'],
@@ -1572,6 +1734,7 @@ function advanceStage() {
   S.stage++;
   S.stageEarned = 0;
   addXp(100);
+  dropRelic(0.35); // 새 지역 도착 기념 유물 드랍 확률 35%
   applyStageTheme();
   save(true);
   renderShop();
@@ -1587,6 +1750,25 @@ function advanceStage() {
 
 $shopList.addEventListener('click', e => {
   if (e.target.closest('[data-go]')) { advanceStage(); return; }
+  const relicCard = e.target.closest('[data-relic]');
+  if (relicCard) {
+    const id = relicCard.dataset.relic;
+    if (S.equipped.includes(id)) {
+      S.equipped = S.equipped.filter(x => x !== id);
+      toast('유물을 해제했어요');
+    } else if (S.equipped.length < 3) {
+      S.equipped.push(id);
+      const r = RELICS.find(x => x.id === id);
+      toast(`${r.icon} ${r.name} 장착!`);
+    } else {
+      toast('⚠️ 장착 슬롯이 가득 찼어요! 먼저 하나를 해제해주세요');
+      return;
+    }
+    sfx('buy');
+    renderShop();
+    updateStats();
+    return;
+  }
   const statBtn = e.target.closest('[data-stat]');
   if (statBtn && statBtn.classList.contains('stat-plus')) {
     if (S.statPoints > 0) {
@@ -1652,7 +1834,7 @@ const SPARKS = ['✨', '⭐', '💫', '🌟'];
 
 function doClick(x, y) {
   const crit = Math.random() < critChance();
-  const gain = clickPower() * (crit ? 10 : 1);
+  const gain = clickPower() * (crit ? critMult() : 1);
   earn(gain);
   S.totalClicks++;
   addXp(1);
@@ -1769,6 +1951,8 @@ $btnSupernova.addEventListener('click', () => {
     xp: S.xp,
     statPoints: S.statPoints,
     stats: { ...S.stats },
+    relics: S.relics.slice(),
+    equipped: S.equipped.slice(),
   };
   friendEls.forEach(el => el.remove());
   friendEls.clear();
@@ -1965,11 +2149,12 @@ function spawnMeteor() {
 
   m.addEventListener('pointerdown', e => {
     e.stopPropagation();
-    const bonus = Math.max(clickPower() * 100, totalSps() * 120);
+    const bonus = Math.max(clickPower() * 100, totalSps() * 120) * (1 + relicVal('meteor'));
     earn(bonus);
     S.meteorsCaught++;
     addXp(25);
     sfx('meteor');
+    dropRelic(0.30); // 혜성에서 유물 드랍 확률 30%
     const rect = $mainArea.getBoundingClientRect();
     const pop = document.createElement('div');
     pop.className = 'pop';
@@ -2130,7 +2315,7 @@ function grantOfflineReward(prevTick) {
   const away = (Date.now() - (prevTick || Date.now())) / 1000;
   const sps = totalSps();
   if (away <= 60 || sps <= 0) return;
-  const capped = Math.min(away, 8 * 3600);
+  const capped = Math.min(away, (8 + relicVal('offlineCap')) * 3600);
   const reward = sps * capped * 0.5;
   earn(reward);
   const mins = Math.floor(away / 60);
