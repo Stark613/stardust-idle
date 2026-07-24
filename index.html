@@ -911,6 +911,7 @@
     </div>
 
     <div id="quote"></div>
+    <div id="pet-follower" class="friend" style="display:none;font-size:30px"></div>
 
     <div id="util-bar">
       <button class="util-btn" id="btn-save">💾<span class="btn-label"> 저장</span></button>
@@ -945,7 +946,7 @@
 <div id="modal-overlay">
   <div id="modal">
     <div class="big-emoji">🎁</div>
-    <h2>어서와요, 우주 비행사!</h2>
+    <h2 id="modal-title">어서와요, 우주 비행사!</h2>
     <p id="modal-text"></p>
     <button id="modal-close">받기! ✨</button>
   </div>
@@ -1122,6 +1123,11 @@ function freshState() {
     stats: { str: 0, wis: 0, luck: 0, charm: 0 },
     relics: [],
     equipped: [],
+    expedition: null,
+    expeditionsDone: 0,
+    pets: {},
+    activePet: null,
+    planets: [],
     lastTick: Date.now(),
   };
 }
@@ -1156,6 +1162,19 @@ function sanitizeSave(d) {
   for (const k of ['str', 'wis', 'luck', 'charm']) out.stats[k] = Math.floor(num(d.stats && d.stats[k]));
   if (Array.isArray(d.relics)) out.relics = [...new Set(d.relics.filter(id => RELICS.some(r => r.id === id)))];
   if (Array.isArray(d.equipped)) out.equipped = [...new Set(d.equipped.filter(id => out.relics.includes(id)))].slice(0, 3);
+  out.expeditionsDone = Math.floor(num(d.expeditionsDone));
+  if (d.expedition && typeof d.expedition === 'object' && EXPEDITIONS.some(x => x.id === d.expedition.dest)) {
+    const st = num(d.expedition.start);
+    if (st > 0) out.expedition = { dest: d.expedition.dest, start: Math.min(st, Date.now()) };
+  }
+  if (d.pets && typeof d.pets === 'object') {
+    for (const p of PETS) {
+      const bond = Math.floor(num(d.pets[p.id]));
+      if (bond > 0) out.pets[p.id] = Math.min(10, bond);
+    }
+  }
+  out.activePet = (PETS.some(p => p.id === d.activePet) && out.pets[d.activePet]) ? d.activePet : (Object.keys(out.pets)[0] || null);
+  if (Array.isArray(d.planets)) out.planets = [...new Set(d.planets.filter(id => PLANETS.some(p => p.id === id)))];
   out.lifetimeEarned = Math.max(out.lifetimeEarned, out.totalEarned);
   return out;
 }
@@ -1271,6 +1290,54 @@ function dropRelic(chance) {
   if (activeTab === 'growth') renderShop();
 }
 
+/* ─── 원정 · 펫 · 행성 도감 (Phase 4) ─── */
+
+const EXPEDITIONS = [
+  { id: 'flower',  icon: '🌸', name: '꽃가루 소행성',  dur: 15 * 60,  hours: 0.5, xp: 30,  relic: 0.10, planet: 0.30, pet: 0.05, essence: 0,
+    desc: '15분 · 별가루 30분치 · 경험치 30' },
+  { id: 'ice',     icon: '🧊', name: '얼음 동굴 행성', dur: 3600,     hours: 2.5, xp: 100, relic: 0.25, planet: 0.60, pet: 0.15, essence: 0,
+    desc: '1시간 · 별가루 2.5시간치 · 경험치 100' },
+  { id: 'volcano', icon: '🌋', name: '화산 미궁',      dur: 4 * 3600, hours: 12,  xp: 300, relic: 0.50, planet: 1.00, pet: 0.35, essence: 0.10,
+    desc: '4시간 · 별가루 12시간치 · 경험치 300 · 🌟 정수 10%' },
+];
+
+const PETS = [
+  { id: 'turtle',    icon: '🐢', name: '별거북',     t: 'offline', v: 0.02,  eff: lv => `방치 보상 효율 +${lv * 2}%p` },
+  { id: 'fox',       icon: '🦊', name: '성운 여우',   t: 'sps',     v: 0.015, eff: lv => `시설 생산 +${(lv * 1.5).toFixed(1)}%` },
+  { id: 'octo',      icon: '🐙', name: '우주 문어',   t: 'click',   v: 0.02,  eff: lv => `클릭 파워 +${lv * 2}%` },
+  { id: 'butterfly', icon: '🦋', name: '빛나비',     t: 'xp',      v: 0.02,  eff: lv => `경험치 +${lv * 2}%` },
+  { id: 'hamster',   icon: '🐹', name: '운석 햄스터', t: 'disc',    v: 0.005, eff: lv => `구매 할인 +${(lv * 0.5).toFixed(1)}%` },
+  { id: 'dragon',    icon: '🐉', name: '아기 용',     t: 'meteor',  v: 0.05,  eff: lv => `혜성 보상 +${lv * 5}%` },
+];
+
+const PLANETS = [
+  { id: 'strawberry', icon: '🍓', name: '딸기 행성' },
+  { id: 'bubble',     icon: '🫧', name: '비눗방울 행성' },
+  { id: 'cake',       icon: '🎂', name: '케이크 행성' },
+  { id: 'mirror',     icon: '🪞', name: '거울 행성' },
+  { id: 'chime',      icon: '🎐', name: '풍경 행성' },
+  { id: 'cactus',     icon: '🌵', name: '선인장 행성' },
+  { id: 'berry',      icon: '🫐', name: '블루베리 행성' },
+  { id: 'honey',      icon: '🍯', name: '꿀단지 행성' },
+  { id: 'cloud',      icon: '☁️', name: '솜구름 행성' },
+  { id: 'carousel',   icon: '🎠', name: '회전목마 행성' },
+  { id: 'crystal',    icon: '🔮', name: '수정구 행성' },
+  { id: 'rainbow',    icon: '🌈', name: '무지개 끝 행성' },
+];
+
+// 활성 펫의 효과 (교감 레벨 비례)
+function petVal(t) {
+  const p = PETS.find(x => x.id === S.activePet);
+  if (!p || p.t !== t) return 0;
+  return p.v * (S.pets[p.id] || 0);
+}
+
+// 행성 도감 보너스: 행성 1개당 생산 +1%, 도감 완성 시 +10% 추가
+function planetMult() {
+  const n = S.planets.length;
+  return 1 + n * 0.01 + (n === PLANETS.length ? 0.1 : 0);
+}
+
 /* ─── 스탯 (Phase 3-A) ─── */
 
 const STATS = [
@@ -1282,7 +1349,7 @@ const STATS = [
 
 function strMult()  { return 1 + S.stats.str * 0.05; }
 function wisMult()  { return 1 + S.stats.wis * 0.03; }
-function charmDisc() { return 1 - Math.min(0.6, Math.min(0.4, S.stats.charm * 0.01) + relicVal('disc')); }
+function charmDisc() { return 1 - Math.min(0.6, Math.min(0.4, S.stats.charm * 0.01) + relicVal('disc') + petVal('disc')); }
 function critChance() { return Math.min(0.6, Math.min(0.35, 0.01 + S.stats.luck * 0.005) + relicVal('crit')); }
 function critMult() { return 10 + relicVal('critMult'); }
 function meteorSpeedup() { return Math.min(0.7, Math.min(0.5, S.stats.luck * 0.01) + relicVal('meteorSpeed')); }
@@ -1293,7 +1360,7 @@ function xpNeed(level) {
 }
 
 function addXp(n) {
-  S.xp += n * (1 + relicVal('xp'));
+  S.xp += n * (1 + relicVal('xp') + petVal('xp'));
   while (S.xp >= xpNeed(S.level)) {
     S.xp -= xpNeed(S.level);
     S.level++;
@@ -1310,7 +1377,7 @@ function clickPower() {
     if (u && u.type === 'click') p *= u.mult;
   }
   // 초당 생산량의 1%도 클릭에 보태줘요 (후반 클릭 재미 유지)
-  return p * essenceMult() * strMult() * (1 + relicVal('click')) + totalSps() * 0.01;
+  return p * essenceMult() * strMult() * (1 + relicVal('click') + petVal('click')) + totalSps() * 0.01;
 }
 
 function totalSps() {
@@ -1318,7 +1385,7 @@ function totalSps() {
   for (const b of BUILDINGS) {
     sum += b.sps * S.owned[b.id] * buildingMult(b.id);
   }
-  return sum * essenceMult() * stageMult() * achMult() * wisMult() * (1 + relicVal('sps'));
+  return sum * essenceMult() * stageMult() * achMult() * wisMult() * (1 + relicVal('sps') + petVal('sps')) * planetMult();
 }
 
 /* ════════════════ 업적 ════════════════ */
@@ -1340,6 +1407,10 @@ const ACHIEVEMENTS = [
   { id: 'stage6',    icon: '🌋', name: '용암도 안 무서워',   desc: 'STAGE 6 도달하기',         cond: s => s.stage >= 5 },
   { id: 'stage12',   icon: '🚪', name: '미지의 문을 연 자',  desc: 'STAGE 12 도달하기',        cond: s => s.stage >= 11 },
   { id: 'unknown1',  icon: '🌀', name: '지도 밖으로',        desc: '미지의 세계에 진입하기',   cond: s => s.stage >= 12 },
+  { id: 'exp1',      icon: '🚀', name: '첫 원정',            desc: '원정 1회 완료하기',        cond: s => s.expeditionsDone >= 1 },
+  { id: 'exp10',     icon: '🧭', name: '베테랑 탐험가',      desc: '원정 10회 완료하기',       cond: s => s.expeditionsDone >= 10 },
+  { id: 'pet1',      icon: '🐣', name: '첫 만남',            desc: '펫 1마리 만나기',          cond: s => Object.keys(s.pets).length >= 1 },
+  { id: 'planet12',  icon: '📖', name: '은하 지리학자',      desc: '행성 도감 완성하기',       cond: s => s.planets.length >= 12 },
   { id: 'relic1',    icon: '🎁', name: '첫 유물',            desc: '유물 1개 획득하기',        cond: s => s.relics.length >= 1 },
   { id: 'relic8',    icon: '🗡️', name: '유물 수집가',       desc: '유물 8종 모으기',          cond: s => s.relics.length >= 8 },
   { id: 'lv10',      icon: '⭐', name: '자라나는 별',        desc: '레벨 10 달성하기',         cond: s => s.level >= 10 },
@@ -1623,6 +1694,50 @@ function renderGrowth() {
     grid.appendChild(card);
   }
   $shopList.appendChild(grid);
+  renderPets();
+}
+
+function renderPets() {
+  const title = document.createElement('div');
+  title.className = 'records-title';
+  title.textContent = `🐾 펫 — 보유 ${Object.keys(S.pets).length}/${PETS.length} (활성 펫 1마리의 효과만 적용)`;
+  $shopList.appendChild(title);
+
+  const hint = document.createElement('div');
+  hint.className = 'item-desc';
+  hint.style.cssText = 'margin:0 2px 8px;line-height:1.6';
+  hint.textContent = '🚀 원정에서 만날 수 있어요. 펫을 눌러 활성화하고, 먹이를 주면 교감 레벨이 올라요!';
+  $shopList.appendChild(hint);
+
+  const feedCost = petFeedCost();
+  for (const p of PETS) {
+    const bond = S.pets[p.id] || 0;
+    const owned = bond > 0;
+    const active = S.activePet === p.id;
+    const row = document.createElement('div');
+    row.className = 'stat-row' + (owned ? '' : ' locked-stage');
+    if (owned) { row.dataset.pet = p.id; row.style.cursor = 'pointer'; }
+    if (active) { row.style.borderLeft = '3px solid var(--accent-mint)'; }
+    row.innerHTML = `
+      <div class="item-icon">${owned ? p.icon : '❓'}</div>
+      <div class="item-info">
+        <div class="item-name">${owned ? p.name : '???'} ${active ? '<span class="relic-badge">활성</span>' : ''}</div>
+        <div class="item-desc">${owned ? `교감 Lv.${bond}${bond >= 10 ? ' (최대)' : ''} · ${p.eff(bond)}` : '원정에서 만날 수 있어요'}</div>
+      </div>
+      ${owned && bond < 10 ? `<button class="stat-plus" data-feed="${p.id}" title="먹이 주기 ✨${fmt(feedCost)}" ${S.stardust >= feedCost ? '' : 'disabled'}>🍪</button>` : ''}`;
+    $shopList.appendChild(row);
+  }
+  if (Object.keys(S.pets).length > 0) {
+    const costHint = document.createElement('div');
+    costHint.className = 'item-desc';
+    costHint.style.cssText = 'margin:2px 2px 10px;text-align:center';
+    costHint.textContent = `🍪 먹이 주기 비용: ✨${fmt(petFeedCost())} (교감 +1)`;
+    $shopList.appendChild(costHint);
+  }
+}
+
+function petFeedCost() {
+  return Math.max(1000, Math.ceil(totalSps() * 300));
 }
 
 function playTimeStr() {
@@ -1639,6 +1754,9 @@ function recordStats() {
     ['time',   '⏰ 플레이 시간', playTimeStr()],
     ['level',  '⭐ 레벨',        'Lv.' + S.level],
     ['relics', '🗡️ 유물',       `${S.relics.length}/${RELICS.length}`],
+    ['exp',    '🚀 원정 완료',   S.expeditionsDone + '회'],
+    ['pets',   '🐾 펫',          `${Object.keys(S.pets).length}/${PETS.length}`],
+    ['planets','🌍 행성 발견',   `${S.planets.length}/${PLANETS.length}`],
     ['resets', '💥 환생 횟수',   S.resets + '번'],
     ['ess',    '🌟 별의 정수',   S.essence + '개'],
     ['met',    '☄️ 혜성 포획',   S.meteorsCaught + '번'],
@@ -1687,6 +1805,11 @@ function updateRecordStats() {
 }
 
 function renderMap() {
+  renderExpedition();
+  const stTitle = document.createElement('div');
+  stTitle.className = 'records-title';
+  stTitle.textContent = '🧭 항해 경로';
+  $shopList.appendChild(stTitle);
   const cur = S.stage;
   for (let i = 0; i <= cur + 2; i++) {
     const info = stageInfo(i);
@@ -1727,6 +1850,161 @@ function renderMap() {
   hint.style.cssText = 'text-align:center;color:var(--text-dim);padding:14px 10px;font-size:12px;line-height:1.7';
   hint.innerHTML = '지도는 끝없이 이어져요 🌌<br>스테이지를 정복할 때마다 생산 +5% 영구 보너스!<br>(진행도는 초신성 폭발에도 유지돼요)';
   $shopList.appendChild(hint);
+  renderPlanetCodex();
+}
+
+function renderExpedition() {
+  const title = document.createElement('div');
+  title.className = 'records-title';
+  title.textContent = `🚀 원정 (완료 ${S.expeditionsDone}회)`;
+  $shopList.appendChild(title);
+
+  if (!S.expedition) {
+    for (const d of EXPEDITIONS) {
+      const row = document.createElement('div');
+      row.className = 'stage-item';
+      row.innerHTML = `
+        <div class="item-icon">${d.icon}</div>
+        <div class="item-info">
+          <div class="item-name">${d.name}</div>
+          <div class="item-desc">${d.desc}<br>🗡️ 유물 ${Math.round(d.relic * 100)}% · 🌍 행성 ${Math.round(d.planet * 100)}% · 🐣 펫 ${Math.round(d.pet * 100)}%</div>
+        </div>
+        <button class="stage-go" data-exp="${d.id}" style="animation:none">출발</button>`;
+      $shopList.appendChild(row);
+    }
+    const hint = document.createElement('div');
+    hint.className = 'item-desc';
+    hint.style.cssText = 'margin:0 2px 12px;text-align:center';
+    hint.textContent = '우주 친구들이 대신 다녀와요. 게임을 꺼도 원정은 계속돼요!';
+    $shopList.appendChild(hint);
+  } else {
+    const d = expeditionDest();
+    const elapsed = (Date.now() - S.expedition.start) / 1000;
+    const pct = Math.min(100, elapsed / d.dur * 100);
+    const done = pct >= 100;
+    const card = document.createElement('div');
+    card.className = 'stage-item current';
+    card.innerHTML = `
+      <div class="item-icon">${d.icon}</div>
+      <div class="item-info">
+        <div class="item-name">${d.name} 원정 중…</div>
+        <div class="stage-bar"><div class="stage-bar-fill" id="exp-bar-fill" style="width:${pct}%"></div></div>
+        <div class="item-desc" id="exp-time">${expTimeText(d, elapsed)}</div>
+      </div>
+      <button class="stage-go" data-claim="1" id="exp-claim" style="${done ? '' : 'display:none'}">🎁 보상</button>`;
+    $shopList.appendChild(card);
+  }
+}
+
+function expTimeText(d, elapsed) {
+  const remain = Math.max(0, d.dur - elapsed);
+  if (remain <= 0) return '✅ 원정 완료! 보상을 받아주세요';
+  const m = Math.floor(remain / 60), s = Math.floor(remain % 60);
+  return `남은 시간 ${m >= 60 ? Math.floor(m / 60) + '시간 ' + (m % 60) + '분' : m + '분 ' + s + '초'}`;
+}
+
+function renderPlanetCodex() {
+  const title = document.createElement('div');
+  title.className = 'records-title';
+  title.textContent = `🌍 행성 도감 — ${S.planets.length}/${PLANETS.length} (행성당 생산 +1%, 완성 시 +10%)`;
+  $shopList.appendChild(title);
+  const grid = document.createElement('div');
+  grid.className = 'relic-grid';
+  for (const p of PLANETS) {
+    const found = S.planets.includes(p.id);
+    const card = document.createElement('div');
+    card.className = 'relic-card' + (found ? '' : ' locked-relic');
+    card.style.borderColor = found ? 'var(--accent-mint)' : 'rgba(255,255,255,0.15)';
+    card.style.cursor = 'default';
+    card.innerHTML = `
+      <div class="relic-head"><span class="relic-icon">${found ? p.icon : '❓'}</span></div>
+      <div class="relic-name">${found ? p.name : '???'}</div>
+      <div class="relic-eff">${found ? '발견 완료!' : '원정에서 발견할 수 있어요'}</div>`;
+    grid.appendChild(card);
+  }
+  $shopList.appendChild(grid);
+}
+
+/* ─── 원정 로직 ─── */
+
+function expeditionDest() {
+  return S.expedition ? EXPEDITIONS.find(x => x.id === S.expedition.dest) : null;
+}
+
+function expeditionDone() {
+  const d = expeditionDest();
+  return d && Date.now() >= S.expedition.start + d.dur * 1000;
+}
+
+function startExpedition(id) {
+  if (S.expedition) return;
+  if (totalOwned(S) < 1) { toast('⚠️ 파견할 우주 친구가 없어요! 시설을 먼저 구매하세요'); return; }
+  const d = EXPEDITIONS.find(x => x.id === id);
+  if (!d) return;
+  S.expedition = { dest: id, start: Date.now() };
+  toast(`🚀 ${d.icon} ${d.name} 원정 출발! (${d.dur >= 3600 ? (d.dur / 3600) + '시간' : (d.dur / 60) + '분'})`);
+  sfx('stage');
+  save(true);
+  renderShop();
+}
+
+function discoverPlanet() {
+  const pool = PLANETS.filter(p => !S.planets.includes(p.id));
+  if (pool.length === 0) return null;
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  S.planets.push(pick.id);
+  toast(`🌍 새 행성 발견: ${pick.icon} ${pick.name}! (생산 +1%)`);
+  sfx('ach');
+  if (S.planets.length === PLANETS.length) toast('📖 행성 도감 완성! 생산 +10% 보너스!');
+  return pick;
+}
+
+function givePet() {
+  const pool = PETS.filter(p => !S.pets[p.id]);
+  if (pool.length > 0) {
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    S.pets[pick.id] = 1;
+    if (!S.activePet) S.activePet = pick.id;
+    toast(`🐣 펫 획득: ${pick.icon} ${pick.name}! 성장 탭에서 만나보세요`);
+    sfx('ach');
+    return pick;
+  }
+  // 전부 보유 중이면 랜덤 펫 교감 +1
+  const owned = PETS.filter(p => (S.pets[p.id] || 0) < 10);
+  if (owned.length > 0) {
+    const pick = owned[Math.floor(Math.random() * owned.length)];
+    S.pets[pick.id]++;
+    toast(`💕 ${pick.icon} ${pick.name} 교감 +1! (Lv.${S.pets[pick.id]})`);
+    return pick;
+  }
+  return null;
+}
+
+function claimExpedition() {
+  const d = expeditionDest();
+  if (!d || !expeditionDone()) return;
+  S.expedition = null;
+  S.expeditionsDone++;
+  const sd = Math.max(totalSps() * d.hours * 3600, clickPower() * d.hours * 200);
+  earn(sd);
+  addXp(d.xp);
+  sfx('meteor');
+  const lines = [`✨ 별가루 +${fmt(sd)}`, `⭐ 경험치 +${d.xp}`];
+  if (d.essence > 0 && Math.random() < d.essence) {
+    S.essence++;
+    lines.push('🌟 별의 정수 +1!');
+  }
+  document.getElementById('modal-title').textContent = `${d.icon} 원정대 귀환!`;
+  document.getElementById('modal-text').innerHTML =
+    `${d.name}에서 무사히 돌아왔어요!<br><span class="reward">${lines.join('<br>')}</span><br><small style="color:var(--text-dim)">발견한 유물·펫·행성은 알림으로 도착해요</small>`;
+  document.getElementById('modal-overlay').classList.add('show');
+  // 발견물은 각자 토스트로 (토스트 큐가 순서대로 보여줌)
+  if (Math.random() < d.planet) discoverPlanet();
+  if (S.expeditionsDone === 1 || Math.random() < d.pet) givePet(); // 첫 원정은 펫 보장
+  dropRelic(d.relic);
+  save(true);
+  renderShop();
+  updateStats();
 }
 
 function advanceStage() {
@@ -1750,6 +2028,36 @@ function advanceStage() {
 
 $shopList.addEventListener('click', e => {
   if (e.target.closest('[data-go]')) { advanceStage(); return; }
+  if (e.target.closest('[data-claim]')) { claimExpedition(); return; }
+  const expBtn = e.target.closest('[data-exp]');
+  if (expBtn) { startExpedition(expBtn.dataset.exp); return; }
+  const feedBtn = e.target.closest('[data-feed]');
+  if (feedBtn) {
+    const cost = petFeedCost();
+    const id = feedBtn.dataset.feed;
+    if (S.stardust >= cost && (S.pets[id] || 0) < 10) {
+      S.stardust -= cost;
+      S.pets[id]++;
+      const p = PETS.find(x => x.id === id);
+      toast(`🍪 냠냠! ${p.icon} ${p.name} 교감 Lv.${S.pets[id]}`);
+      sfx('buy');
+      renderShop();
+      updateStats();
+    }
+    return;
+  }
+  const petRow = e.target.closest('[data-pet]');
+  if (petRow) {
+    if (S.activePet !== petRow.dataset.pet) {
+      S.activePet = petRow.dataset.pet;
+      const p = PETS.find(x => x.id === S.activePet);
+      toast(`${p.icon} ${p.name}(이)가 별 곁을 따라다녀요!`);
+      sfx('buy');
+      renderShop();
+      updateStats();
+    }
+    return;
+  }
   const relicCard = e.target.closest('[data-relic]');
   if (relicCard) {
     const id = relicCard.dataset.relic;
@@ -1953,6 +2261,11 @@ $btnSupernova.addEventListener('click', () => {
     stats: { ...S.stats },
     relics: S.relics.slice(),
     equipped: S.equipped.slice(),
+    expedition: S.expedition ? { ...S.expedition } : null,
+    expeditionsDone: S.expeditionsDone,
+    pets: { ...S.pets },
+    activePet: S.activePet,
+    planets: S.planets.slice(),
   };
   friendEls.forEach(el => el.remove());
   friendEls.clear();
@@ -2040,6 +2353,23 @@ function positionFriends() {
     el.style.top = (cy + Math.sin(rad) * ry - 14) + 'px';
     i++;
   }
+  // 활성 펫은 별 바로 아래를 졸졸 따라다녀요
+  const pet = document.getElementById('pet-follower');
+  if (pet && pet.textContent) {
+    pet.style.left = (cx - 15) + 'px';
+    pet.style.top = (cy + starRect.height * 0.62) + 'px';
+  }
+}
+
+function updatePetFollower() {
+  const el = document.getElementById('pet-follower');
+  const p = PETS.find(x => x.id === S.activePet);
+  const want = p ? p.icon : '';
+  if (el.textContent !== want) {
+    el.textContent = want;
+    el.style.display = p ? '' : 'none';
+    positionFriends();
+  }
 }
 
 function updateFriends() {
@@ -2058,6 +2388,7 @@ function updateFriends() {
     }
   }
   if (added) positionFriends();
+  updatePetFollower();
 }
 
 window.addEventListener('resize', positionFriends);
@@ -2149,7 +2480,7 @@ function spawnMeteor() {
 
   m.addEventListener('pointerdown', e => {
     e.stopPropagation();
-    const bonus = Math.max(clickPower() * 100, totalSps() * 120) * (1 + relicVal('meteor'));
+    const bonus = Math.max(clickPower() * 100, totalSps() * 120) * (1 + relicVal('meteor') + petVal('meteor'));
     earn(bonus);
     S.meteorsCaught++;
     addXp(25);
@@ -2235,6 +2566,13 @@ function loop(now) {
   if (shopDirtyTimer > 0.25) {
     shopDirtyTimer = 0;
     checkAchievements();
+    // 원정 완료 알림 (탭 상관없이 1회)
+    if (S.expedition && expeditionDone() && !loop._expNotified) {
+      loop._expNotified = true;
+      toast('🚀 원정대가 돌아왔어요! 지도 탭에서 보상을 받아주세요');
+      sfx('ach');
+    }
+    if (!S.expedition) loop._expNotified = false;
     if (activeTab === 'growth') {
       // 경험치 바만 제자리 갱신
       const fill = document.getElementById('xp-bar-fill');
@@ -2245,7 +2583,8 @@ function loop(now) {
         if (txt) txt.textContent = `경험치 ${Math.floor(S.xp)} / ${need}`;
         const pts = document.getElementById('growth-points');
         if (pts) pts.textContent = S.statPoints > 0 ? `💪 분배할 포인트 ${S.statPoints}개!` : '레벨 업으로 포인트를 얻어요';
-        document.querySelectorAll('.stat-plus').forEach(b => { b.disabled = S.statPoints <= 0; });
+        document.querySelectorAll('.stat-plus[data-stat]').forEach(b => { b.disabled = S.statPoints <= 0; });
+        document.querySelectorAll('.stat-plus[data-feed]').forEach(b => { b.disabled = S.stardust < petFeedCost(); });
       }
     } else if (activeTab === 'records') {
       updateRecordStats();
@@ -2260,6 +2599,17 @@ function loop(now) {
         if (txt) txt.textContent = `이 구역에서 모은 별가루 ${fmt(S.stageEarned)} / ${fmt(goal)}`;
         const go = document.getElementById('stage-go');
         if (go) go.style.display = pct >= 100 ? '' : 'none';
+      }
+      // 원정 진행 바
+      const expFill = document.getElementById('exp-bar-fill');
+      if (expFill && S.expedition) {
+        const d = expeditionDest();
+        const elapsed = (Date.now() - S.expedition.start) / 1000;
+        expFill.style.width = Math.min(100, elapsed / d.dur * 100) + '%';
+        const t = document.getElementById('exp-time');
+        if (t) t.textContent = expTimeText(d, elapsed);
+        const claim = document.getElementById('exp-claim');
+        if (claim) claim.style.display = elapsed >= d.dur ? '' : 'none';
       }
     } else {
       refreshShopAffordability();
@@ -2316,10 +2666,11 @@ function grantOfflineReward(prevTick) {
   const sps = totalSps();
   if (away <= 60 || sps <= 0) return;
   const capped = Math.min(away, (8 + relicVal('offlineCap')) * 3600);
-  const reward = sps * capped * 0.5;
+  const reward = sps * capped * Math.min(0.75, 0.5 + petVal('offline'));
   earn(reward);
   const mins = Math.floor(away / 60);
   const timeStr = mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`;
+  document.getElementById('modal-title').textContent = '어서와요, 우주 비행사!';
   document.getElementById('modal-text').innerHTML =
     `자리를 비운 <b>${timeStr}</b> 동안<br>친구들이 별가루를 모아뒀어요!<br><span class="reward">✨ +${fmt(reward)}</span>`;
   document.getElementById('modal-overlay').classList.add('show');
