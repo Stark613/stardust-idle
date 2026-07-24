@@ -1,0 +1,14 @@
+{
+  "name": "별가루 키우기 - 우주 클릭커",
+  "short_name": "별가루 키우기",
+  "description": "별을 클릭해 별가루를 모으는 귀여운 우주 방치형 RPG",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0e2a",
+  "theme_color": "#0b0e2a",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

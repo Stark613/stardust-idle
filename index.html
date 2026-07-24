@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0b0e2a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
 <title>✨ 별가루 키우기 - 우주 클릭커</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -449,6 +453,27 @@
 
   #star-wrap:active #star-char { transform: scale(0.88); }
   #star-wrap.bounce #star-char { transform: scale(0.88); }
+
+  #star-crown {
+    position: absolute;
+    top: -2%;
+    left: 50%;
+    transform: translateX(-50%) rotate(-8deg);
+    font-size: 42px;
+    z-index: 2;
+    pointer-events: none;
+    animation: float 4s ease-in-out infinite;
+    filter: drop-shadow(0 0 10px rgba(255, 204, 51, 0.7));
+  }
+
+  /* ─── 꾸미기 ─── */
+  .skin-dot {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+  }
 
   /* 클릭 파티클 */
   .pop {
@@ -947,9 +972,19 @@
 
     <div id="star-wrap" title="별을 콕콕 눌러줘!">
       <div id="star-glow"></div>
+      <div id="star-crown" style="display:none">👑</div>
       <svg id="star-char" viewBox="0 0 200 200">
+        <defs>
+          <linearGradient id="rainbow-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ff9ecf"/>
+            <stop offset="25%" stop-color="#ffd966"/>
+            <stop offset="50%" stop-color="#7df3d4"/>
+            <stop offset="75%" stop-color="#8ab6ff"/>
+            <stop offset="100%" stop-color="#c89eff"/>
+          </linearGradient>
+        </defs>
         <!-- 별 몸통 -->
-        <path d="M100 8 L124 68 L188 74 L140 118 L154 182 L100 148 L46 182 L60 118 L12 74 L76 68 Z"
+        <path id="star-body" d="M100 8 L124 68 L188 74 L140 118 L154 182 L100 148 L46 182 L60 118 L12 74 L76 68 Z"
               fill="#ffd966" stroke="#f0b429" stroke-width="5" stroke-linejoin="round"/>
         <!-- 볼터치 -->
         <ellipse cx="66" cy="106" rx="11" ry="7" fill="#ffb0c8" opacity="0.85"/>
@@ -1151,6 +1186,11 @@ function stageMult() {
 }
 
 function applyStageTheme() {
+  const th = THEMES.find(x => x.id === S.theme);
+  if (th && th.id !== 'auto' && th.cond(S)) {
+    document.body.style.background = th.bg;
+    return;
+  }
   const hue = stageInfo(S.stage).hue;
   document.body.style.background =
     `radial-gradient(ellipse at 50% 30%, hsl(${hue}, 42%, 17%) 0%, hsl(${hue}, 48%, 7%) 70%)`;
@@ -1191,6 +1231,8 @@ function freshState() {
     bossesKilled: 0,
     questsDone: 0,
     daily: null,
+    skin: 'classic',
+    theme: 'auto',
     lastTick: Date.now(),
   };
 }
@@ -1240,6 +1282,8 @@ function sanitizeSave(d) {
   if (Array.isArray(d.planets)) out.planets = [...new Set(d.planets.filter(id => PLANETS.some(p => p.id === id)))];
   out.bossesKilled = Math.floor(num(d.bossesKilled));
   out.questsDone = Math.floor(num(d.questsDone));
+  if (SKINS.some(x => x.id === d.skin)) out.skin = d.skin;
+  if (THEMES.some(x => x.id === d.theme)) out.theme = d.theme;
   if (d.daily && typeof d.daily === 'object' && typeof d.daily.day === 'string') {
     const dd = d.daily;
     const quests = Array.isArray(dd.quests) ? dd.quests.filter(id => QUEST_POOL.some(q => q.id === id)).slice(0, 3) : [];
@@ -1365,6 +1409,37 @@ function dropRelic(chance) {
   toast(`🎁 유물 획득: ${pick.icon} ${pick.name} [${RARITY[rarity].name}]!`);
   sfx('ach');
   if (activeTab === 'growth') renderShop();
+}
+
+/* ─── 별 스킨 · 배경 테마 (Phase 6) ─── */
+
+const SKINS = [
+  { id: 'classic', name: '클래식 별',  fill: '#ffd966', stroke: '#f0b429', glow: '255,217,102', cond: () => true,                    condText: '기본' },
+  { id: 'mint',    name: '민트 별',    fill: '#7df3d4', stroke: '#3ec9a7', glow: '125,243,212', cond: s => s.level >= 20,            condText: '레벨 20 달성' },
+  { id: 'sakura',  name: '벚꽃 별',    fill: '#ffb7d5', stroke: '#f28bb4', glow: '255,158,207', cond: s => s.stage >= 7,             condText: 'STAGE 8 도달' },
+  { id: 'night',   name: '밤하늘 별',  fill: '#5d8ef7', stroke: '#3a63c4', glow: '138,182,255', cond: s => s.achievements.length >= 15, condText: '업적 15개 달성' },
+  { id: 'rainbow', name: '무지개 별',  fill: 'url(#rainbow-grad)', stroke: '#ffffff', glow: '255,255,255', cond: s => s.resets >= 5, condText: '환생 5회' },
+  { id: 'king',    name: '황금 왕별',  fill: '#ffcc33', stroke: '#e6a817', glow: '255,204,51', crown: true, cond: s => s.bossesKilled >= 10, condText: '보스 10개 격파' },
+];
+
+const THEMES = [
+  { id: 'auto',   name: '항해 테마',   preview: 'linear-gradient(135deg,#151a45,#0b0e2a)', cond: () => true, condText: '기본 · 스테이지 따라 변화' },
+  { id: 'nebula', name: '보랏빛 성운', preview: 'linear-gradient(135deg,#3a2a5e,#1a1038)',
+    bg: 'radial-gradient(ellipse at 30% 20%, #3a2a5e 0%, #1a1038 45%, #0b0620 100%)', cond: s => s.planets.length >= 6, condText: '행성 6개 발견' },
+  { id: 'aurora', name: '오로라 하늘', preview: 'linear-gradient(160deg,#0a3d33,#123a5c)',
+    bg: 'linear-gradient(160deg, #06231f 0%, #0a3d33 35%, #123a5c 70%, #0b0e2a 100%)', cond: s => s.essence >= 30, condText: '별의 정수 30개' },
+  { id: 'core',   name: '은하 중심',   preview: 'radial-gradient(circle,#4a3510,#241608)',
+    bg: 'radial-gradient(ellipse at 50% 45%, #4a3510 0%, #241608 40%, #0a0604 100%)', cond: s => s.planets.length >= 12, condText: '행성 도감 완성' },
+];
+
+function applySkin() {
+  let sk = SKINS.find(x => x.id === S.skin);
+  if (!sk || !sk.cond(S)) sk = SKINS[0];
+  const body = document.getElementById('star-body');
+  body.setAttribute('fill', sk.fill);
+  body.setAttribute('stroke', sk.stroke);
+  document.getElementById('star-char').style.filter = `drop-shadow(0 0 25px rgba(${sk.glow}, 0.45))`;
+  document.getElementById('star-crown').style.display = sk.crown ? '' : 'none';
 }
 
 /* ─── 원정 · 펫 · 행성 도감 (Phase 4) ─── */
@@ -1817,6 +1892,50 @@ function renderPets() {
     costHint.textContent = `🍪 먹이 주기 비용: ✨${fmt(petFeedCost())} (교감 +1)`;
     $shopList.appendChild(costHint);
   }
+  renderCosmetics();
+}
+
+function renderCosmetics() {
+  const title = document.createElement('div');
+  title.className = 'records-title';
+  title.textContent = '🎨 꾸미기 — 별 스킨';
+  $shopList.appendChild(title);
+
+  for (const sk of SKINS) {
+    const unlocked = sk.cond(S);
+    const active = S.skin === sk.id || (!SKINS.find(x => x.id === S.skin && x.cond(S)) && sk.id === 'classic');
+    const row = document.createElement('div');
+    row.className = 'stat-row' + (unlocked ? '' : ' locked-stage');
+    if (unlocked) { row.dataset.skin = sk.id; row.style.cursor = 'pointer'; }
+    if (S.skin === sk.id) row.style.borderLeft = '3px solid var(--accent)';
+    row.innerHTML = `
+      <div class="skin-dot" style="background:${sk.id === 'rainbow' ? 'linear-gradient(135deg,#ff9ecf,#ffd966,#7df3d4,#8ab6ff)' : sk.fill}"></div>
+      <div class="item-info">
+        <div class="item-name">${sk.name}${sk.crown ? ' 👑' : ''} ${S.skin === sk.id ? '<span class="relic-badge">착용중</span>' : ''}</div>
+        <div class="item-desc">${unlocked ? '눌러서 착용하기' : '🔒 ' + sk.condText}</div>
+      </div>`;
+    $shopList.appendChild(row);
+  }
+
+  const title2 = document.createElement('div');
+  title2.className = 'records-title';
+  title2.textContent = '🌌 배경 테마';
+  $shopList.appendChild(title2);
+
+  for (const th of THEMES) {
+    const unlocked = th.cond(S);
+    const row = document.createElement('div');
+    row.className = 'stat-row' + (unlocked ? '' : ' locked-stage');
+    if (unlocked) { row.dataset.theme = th.id; row.style.cursor = 'pointer'; }
+    if (S.theme === th.id) row.style.borderLeft = '3px solid var(--accent)';
+    row.innerHTML = `
+      <div class="skin-dot" style="background:${th.preview};border-radius:8px"></div>
+      <div class="item-info">
+        <div class="item-name">${th.name} ${S.theme === th.id ? '<span class="relic-badge">적용중</span>' : ''}</div>
+        <div class="item-desc">${unlocked ? '눌러서 적용하기' : '🔒 ' + th.condText}</div>
+      </div>`;
+    $shopList.appendChild(row);
+  }
 }
 
 function petFeedCost() {
@@ -2176,6 +2295,26 @@ $shopList.addEventListener('click', e => {
     }
     return;
   }
+  const skinRow = e.target.closest('[data-skin]');
+  if (skinRow) {
+    S.skin = skinRow.dataset.skin;
+    applySkin();
+    toast(`🎨 ${SKINS.find(x => x.id === S.skin).name} 착용!`);
+    sfx('buy');
+    save(true);
+    renderShop();
+    return;
+  }
+  const themeRow = e.target.closest('[data-theme]');
+  if (themeRow) {
+    S.theme = themeRow.dataset.theme;
+    applyStageTheme();
+    toast(`🌌 ${THEMES.find(x => x.id === S.theme).name} 적용!`);
+    sfx('buy');
+    save(true);
+    renderShop();
+    return;
+  }
   const petRow = e.target.closest('[data-pet]');
   if (petRow) {
     if (S.activePet !== petRow.dataset.pet) {
@@ -2410,6 +2549,8 @@ $btnSupernova.addEventListener('click', () => {
     bossesKilled: S.bossesKilled,
     questsDone: S.questsDone,
     daily: S.daily ? JSON.parse(JSON.stringify(S.daily)) : null,
+    skin: S.skin,
+    theme: S.theme,
   };
   friendEls.forEach(el => el.remove());
   friendEls.clear();
@@ -2882,6 +3023,15 @@ function loop(now) {
     shopDirtyTimer = 0;
     checkAchievements();
     ensureDaily();
+    // 신규 유저 힌트 (세션당 1회)
+    if (!loop._hintShop && totalOwned(S) === 0 && S.stardust >= 15) {
+      loop._hintShop = true;
+      toast('🏭 시설 탭에서 ⭐ 아기 별을 입양해보세요!');
+    }
+    if (!loop._hintUpg && S.upgrades.length === 0 && S.totalClicks >= 15 && S.stardust >= 100) {
+      loop._hintUpg = true;
+      toast('⬆️ 업글 탭에 클릭을 강화하는 장갑이 있어요!');
+    }
     // 보스 타이머
     if (boss) {
       const remain = boss.until - Date.now();
@@ -3060,6 +3210,7 @@ function applySave(data) {
   friendEls.clear();
   grantOfflineReward(prevTick);
   save(true);
+  applySkin();
   applyStageTheme();
   renderShop();
   updateStats();
@@ -3297,6 +3448,7 @@ document.getElementById('btn-reset').addEventListener('click', () => {
     friendEls.clear();
     S = freshState();
     ensureDaily(true);
+    applySkin();
     applyStageTheme();
     renderShop();
     updateStats();
@@ -3309,12 +3461,30 @@ window.addEventListener('beforeunload', () => save(true));
 
 /* ════════════════ 시작! ════════════════ */
 
+// 신규 유저 환영 튜토리얼
+function maybeWelcome() {
+  if (S.totalClicks > 0 || S.totalEarned > 0 || S.resets > 0 || totalOwned(S) > 0) return;
+  document.getElementById('modal-title').textContent = '✨ 별가루 키우기에 어서와요!';
+  document.getElementById('modal-text').innerHTML =
+    '가운데 <b>별을 콕콕 클릭</b>해서 별가루를 모으고,<br>' +
+    '🏭 <b>시설 탭</b>에서 우주 친구들을 입양하면<br>가만히 있어도 별가루가 쌓여요!<br><br>' +
+    '<small style="color:var(--text-dim)">진행 상황은 자동 저장되고,<br>게임을 꺼두면 방치 보상도 쌓인답니다 💤</small>';
+  document.getElementById('modal-overlay').classList.add('show');
+}
+
+// PWA: https로 서빙될 때만 서비스 워커 등록 (GitHub Pages 등)
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
 load();
 ensureDaily(true);
+applySkin();
 applyStageTheme();
 initStarfield();
 renderShop();
 updateStats();
+maybeWelcome();
 checkCloudNewer();
 scheduleMeteor();
 scheduleBoss();
