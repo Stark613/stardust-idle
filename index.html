@@ -97,6 +97,69 @@
 
   #stage-label:hover { text-decoration: underline; }
 
+  #level-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-top: 3px;
+    cursor: pointer;
+  }
+
+  #level-label:hover { text-decoration: underline; }
+  #level-label .points-hint { color: var(--accent-pink); animation: pulse 1.5s ease-in-out infinite; display: inline-block; }
+
+  .crit-pop {
+    font-size: 30px !important;
+    color: var(--accent-pink) !important;
+    text-shadow: 0 0 14px rgba(255, 158, 207, 0.9) !important;
+  }
+
+  /* ─── 성장 탭 ─── */
+  .growth-card {
+    background: var(--panel-light);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+
+  .growth-level { font-size: 17px; font-weight: 800; color: var(--accent); }
+  .growth-points { font-size: 13px; font-weight: 700; color: var(--accent-pink); margin-top: 2px; }
+
+  .stat-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel-light);
+    border-radius: 14px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+
+  .stat-row .item-info { flex: 1; }
+  .stat-row .stat-lv { font-size: 14px; font-weight: 800; color: var(--accent-mint); min-width: 28px; text-align: center; }
+
+  .stat-plus {
+    border: none;
+    background: linear-gradient(135deg, var(--accent-mint), #4dd6b0);
+    color: #00382a;
+    font-weight: 800;
+    font-size: 16px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+    transition: transform 0.1s, opacity 0.15s;
+  }
+
+  .stat-plus:active { transform: scale(0.9); }
+  .stat-plus:disabled { opacity: 0.3; cursor: default; }
+
+  @media (max-width: 640px) {
+    .tab { font-size: 12px; padding: 11px 2px; }
+  }
+
   /* ─── 지도 탭 ─── */
   .stage-item {
     display: flex;
@@ -782,6 +845,7 @@
       <div id="click-power-label">👆 클릭당 +1</div>
       <div id="essence-label" style="display:none"></div>
       <div id="stage-label" title="지도 보기"></div>
+      <div id="level-label" title="성장 보기"></div>
       <button id="btn-supernova" style="display:none"></button>
     </div>
 
@@ -827,6 +891,7 @@
       <button class="tab active" data-tab="buildings">🏭 시설</button>
       <button class="tab" data-tab="upgrades">⬆️ 업글</button>
       <button class="tab" data-tab="map">🗺️ 지도</button>
+      <button class="tab" data-tab="growth">⭐ 성장</button>
       <button class="tab" data-tab="records">🏆 기록</button>
     </div>
     <div id="buy-amount-row">
@@ -1015,6 +1080,10 @@ function freshState() {
     meteorsCaught: 0,
     playTime: 0,
     lifetimeEarned: 0,
+    level: 1,
+    xp: 0,
+    statPoints: 0,
+    stats: { str: 0, wis: 0, luck: 0, charm: 0 },
     lastTick: Date.now(),
   };
 }
@@ -1043,6 +1112,10 @@ function sanitizeSave(d) {
   for (const b of BUILDINGS) out.owned[b.id] = Math.floor(num(d.owned && d.owned[b.id]));
   if (Array.isArray(d.upgrades)) out.upgrades = d.upgrades.filter(id => UPGRADES.some(u => u.id === id));
   if (Array.isArray(d.achievements)) out.achievements = d.achievements.filter(id => ACHIEVEMENTS.some(a => a.id === id));
+  out.level = Math.max(1, Math.floor(num(d.level, 1)));
+  out.xp = num(d.xp);
+  out.statPoints = Math.floor(num(d.statPoints));
+  for (const k of ['str', 'wis', 'luck', 'charm']) out.stats[k] = Math.floor(num(d.stats && d.stats[k]));
   out.lifetimeEarned = Math.max(out.lifetimeEarned, out.totalEarned);
   return out;
 }
@@ -1076,6 +1149,37 @@ function essenceMult() {
   return 1 + (S.essence || 0) * 0.02;
 }
 
+/* ─── 스탯 (Phase 3-A) ─── */
+
+const STATS = [
+  { key: 'str',   icon: '💪', name: '힘',   desc: '클릭 파워 +5% / 포인트' },
+  { key: 'wis',   icon: '🧠', name: '지혜', desc: '시설 생산 +3% / 포인트' },
+  { key: 'luck',  icon: '🍀', name: '행운', desc: '크리티컬 +0.5%p · 혜성 출현 -1% / 포인트' },
+  { key: 'charm', icon: '💖', name: '매력', desc: '구매 비용 -1% / 포인트 (최대 -40%)' },
+];
+
+function strMult()  { return 1 + S.stats.str * 0.05; }
+function wisMult()  { return 1 + S.stats.wis * 0.03; }
+function charmDisc() { return 1 - Math.min(0.4, S.stats.charm * 0.01); }
+function critChance() { return Math.min(0.35, 0.01 + S.stats.luck * 0.005); }
+function meteorSpeedup() { return Math.min(0.5, S.stats.luck * 0.01); }
+
+// 레벨업에 필요한 경험치 (레벨이 오를수록 완만하게 증가)
+function xpNeed(level) {
+  return Math.floor(50 * Math.pow(level, 1.35));
+}
+
+function addXp(n) {
+  S.xp += n;
+  while (S.xp >= xpNeed(S.level)) {
+    S.xp -= xpNeed(S.level);
+    S.level++;
+    S.statPoints++;
+    toast(`⭐ 레벨 업! Lv.${S.level} — 스탯 포인트 +1`);
+    sfx('stage');
+  }
+}
+
 function clickPower() {
   let p = 1;
   for (const uid of S.upgrades) {
@@ -1083,7 +1187,7 @@ function clickPower() {
     if (u && u.type === 'click') p *= u.mult;
   }
   // 초당 생산량의 1%도 클릭에 보태줘요 (후반 클릭 재미 유지)
-  return p * essenceMult() + totalSps() * 0.01;
+  return p * essenceMult() * strMult() + totalSps() * 0.01;
 }
 
 function totalSps() {
@@ -1091,7 +1195,7 @@ function totalSps() {
   for (const b of BUILDINGS) {
     sum += b.sps * S.owned[b.id] * buildingMult(b.id);
   }
-  return sum * essenceMult() * stageMult() * achMult();
+  return sum * essenceMult() * stageMult() * achMult() * wisMult();
 }
 
 /* ════════════════ 업적 ════════════════ */
@@ -1113,6 +1217,8 @@ const ACHIEVEMENTS = [
   { id: 'stage6',    icon: '🌋', name: '용암도 안 무서워',   desc: 'STAGE 6 도달하기',         cond: s => s.stage >= 5 },
   { id: 'stage12',   icon: '🚪', name: '미지의 문을 연 자',  desc: 'STAGE 12 도달하기',        cond: s => s.stage >= 11 },
   { id: 'unknown1',  icon: '🌀', name: '지도 밖으로',        desc: '미지의 세계에 진입하기',   cond: s => s.stage >= 12 },
+  { id: 'lv10',      icon: '⭐', name: '자라나는 별',        desc: '레벨 10 달성하기',         cond: s => s.level >= 10 },
+  { id: 'lv30',      icon: '🌠', name: '어엿한 별',          desc: '레벨 30 달성하기',         cond: s => s.level >= 30 },
   { id: 'met1',      icon: '☄️', name: '행운의 포수',        desc: '골든 혜성 잡기',           cond: s => s.meteorsCaught >= 1 },
   { id: 'met25',     icon: '🎯', name: '혜성 사냥꾼',        desc: '골든 혜성 25번 잡기',      cond: s => s.meteorsCaught >= 25 },
   { id: 'life1e9',   icon: '💰', name: '억만장자 별',        desc: '평생 10억 별가루 모으기',  cond: s => s.lifetimeEarned >= 1e9 },
@@ -1173,6 +1279,7 @@ function sfx(kind) {
     case 'stage':  [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.14, { delay: i * 0.09, vol: 0.09 })); break;
     case 'nova':   tone(220, 0.7, { type: 'sawtooth', slide: 55, vol: 0.12 }); tone(880, 0.5, { delay: 0.1, slide: 1760, vol: 0.05 }); break;
     case 'ach':    [660, 880, 1320].forEach((f, i) => tone(f, 0.12, { delay: i * 0.08, vol: 0.09 })); break;
+    case 'crit':   tone(880, 0.1, { type: 'square', vol: 0.09 }); tone(1760, 0.18, { delay: 0.06, type: 'square', vol: 0.08 }); break;
   }
 }
 
@@ -1182,7 +1289,11 @@ function supernovaGain() {
 }
 
 function buildingCost(b) {
-  return Math.ceil(b.baseCost * Math.pow(1.15, S.owned[b.id]));
+  return Math.ceil(b.baseCost * Math.pow(1.15, S.owned[b.id]) * charmDisc());
+}
+
+function upgradeCost(u) {
+  return Math.ceil(u.cost * charmDisc());
 }
 
 // k개 연속 구매 비용 (등비수열 합)
@@ -1282,7 +1393,7 @@ function renderShop() {
       const bought = S.upgrades.includes(u.id);
       if (!bought && !u.unlock(S)) continue;
       shown++;
-      const canBuy = !bought && S.stardust >= u.cost;
+      const canBuy = !bought && S.stardust >= upgradeCost(u);
       const btn = document.createElement('button');
       btn.className = 'item' + (bought ? ' upgrade-bought' : canBuy ? '' : ' locked');
       if (!bought) btn.dataset.upgrade = u.id;
@@ -1292,7 +1403,7 @@ function renderShop() {
           <div class="item-name">${u.name}</div>
           <div class="item-desc">${u.desc}</div>
         </div>
-        <div class="item-cost ${bought ? '' : canBuy ? '' : 'too-expensive'}">${bought ? '완료!' : '✨' + fmt(u.cost)}</div>`;
+        <div class="item-cost ${bought ? '' : canBuy ? '' : 'too-expensive'}">${bought ? '완료!' : '✨' + fmt(upgradeCost(u))}</div>`;
       $shopList.appendChild(btn);
     }
     if (shown === 0) {
@@ -1303,9 +1414,54 @@ function renderShop() {
     }
   } else if (activeTab === 'map') {
     renderMap();
+  } else if (activeTab === 'growth') {
+    renderGrowth();
   } else if (activeTab === 'records') {
     renderRecords();
   }
+}
+
+function renderGrowth() {
+  const need = xpNeed(S.level);
+  const pct = Math.min(100, S.xp / need * 100);
+  const head = document.createElement('div');
+  head.className = 'growth-card';
+  head.innerHTML = `
+    <div class="growth-level">⭐ Lv.${S.level}</div>
+    <div class="stage-bar"><div class="stage-bar-fill" id="xp-bar-fill" style="width:${pct}%"></div></div>
+    <div class="item-desc" id="xp-text">경험치 ${Math.floor(S.xp)} / ${need}</div>
+    <div class="growth-points" id="growth-points">${S.statPoints > 0 ? `💪 분배할 포인트 ${S.statPoints}개!` : '레벨 업으로 포인트를 얻어요'}</div>`;
+  $shopList.appendChild(head);
+
+  for (const st of STATS) {
+    const row = document.createElement('div');
+    row.className = 'stat-row';
+    row.innerHTML = `
+      <div class="item-icon">${st.icon}</div>
+      <div class="item-info">
+        <div class="item-name">${st.name}</div>
+        <div class="item-desc">${st.desc}</div>
+      </div>
+      <div class="stat-lv">${S.stats[st.key]}</div>
+      <button class="stat-plus" data-stat="${st.key}" ${S.statPoints > 0 ? '' : 'disabled'}>+</button>`;
+    $shopList.appendChild(row);
+  }
+
+  const effect = document.createElement('div');
+  effect.className = 'growth-card';
+  effect.innerHTML = `
+    <div class="item-name" style="margin-bottom:6px">현재 효과</div>
+    <div class="item-desc" style="line-height:1.9">
+      💪 클릭 파워 ×${strMult().toFixed(2)}<br>
+      🧠 시설 생산 ×${wisMult().toFixed(2)}<br>
+      🍀 크리티컬 확률 ${(critChance() * 100).toFixed(1)}% · 혜성 출현 ${Math.round(meteorSpeedup() * 100)}% 빨라짐<br>
+      💖 구매 할인 ${Math.round((1 - charmDisc()) * 100)}%
+    </div>
+    <div class="item-desc" style="margin-top:8px;color:var(--text-dim)">
+      경험치: 클릭 +1 · 방치 분당 +2 · 혜성 +25 · 스테이지 +100 · 환생 +200<br>
+      레벨과 스탯은 초신성 환생에도 유지돼요!
+    </div>`;
+  $shopList.appendChild(effect);
 }
 
 function playTimeStr() {
@@ -1320,6 +1476,7 @@ function recordStats() {
     ['life',   '🌌 평생 누적',   fmt(S.lifetimeEarned)],
     ['clicks', '👆 총 클릭',     S.totalClicks.toLocaleString('ko-KR') + '번'],
     ['time',   '⏰ 플레이 시간', playTimeStr()],
+    ['level',  '⭐ 레벨',        'Lv.' + S.level],
     ['resets', '💥 환생 횟수',   S.resets + '번'],
     ['ess',    '🌟 별의 정수',   S.essence + '개'],
     ['met',    '☄️ 혜성 포획',   S.meteorsCaught + '번'],
@@ -1414,6 +1571,7 @@ function advanceStage() {
   if (S.stageEarned < stageGoal(S.stage)) return;
   S.stage++;
   S.stageEarned = 0;
+  addXp(100);
   applyStageTheme();
   save(true);
   renderShop();
@@ -1429,6 +1587,17 @@ function advanceStage() {
 
 $shopList.addEventListener('click', e => {
   if (e.target.closest('[data-go]')) { advanceStage(); return; }
+  const statBtn = e.target.closest('[data-stat]');
+  if (statBtn && statBtn.classList.contains('stat-plus')) {
+    if (S.statPoints > 0) {
+      S.stats[statBtn.dataset.stat]++;
+      S.statPoints--;
+      sfx('buy');
+      renderShop();
+      updateStats();
+    }
+    return;
+  }
   const btn = e.target.closest('.item');
   if (!btn) return;
   if (btn.dataset.buy) {
@@ -1444,8 +1613,9 @@ $shopList.addEventListener('click', e => {
     renderShop();
   } else if (btn.dataset.upgrade) {
     const u = UPGRADES.find(x => x.id === btn.dataset.upgrade);
-    if (S.upgrades.includes(u.id) || S.stardust < u.cost) return;
-    S.stardust -= u.cost;
+    const cost = upgradeCost(u);
+    if (S.upgrades.includes(u.id) || S.stardust < cost) return;
+    S.stardust -= cost;
     S.upgrades.push(u.id);
     toast(`${u.icon} ${u.name} 구매! ${u.desc}`);
     sfx('buy');
@@ -1481,15 +1651,17 @@ document.querySelectorAll('.tab').forEach(t => {
 const SPARKS = ['✨', '⭐', '💫', '🌟'];
 
 function doClick(x, y) {
-  const gain = clickPower();
+  const crit = Math.random() < critChance();
+  const gain = clickPower() * (crit ? 10 : 1);
   earn(gain);
   S.totalClicks++;
-  sfx('click');
+  addXp(1);
+  sfx(crit ? 'crit' : 'click');
 
-  // +숫자 팝업
+  // +숫자 팝업 (크리티컬은 크게!)
   const pop = document.createElement('div');
-  pop.className = 'pop';
-  pop.textContent = '+' + fmt(gain);
+  pop.className = 'pop' + (crit ? ' crit-pop' : '');
+  pop.textContent = (crit ? '💥 CRIT! +' : '+') + fmt(gain);
   pop.style.left = x + 'px';
   pop.style.top = y + 'px';
   $mainArea.appendChild(pop);
@@ -1546,8 +1718,10 @@ function happyFace() {
 const $essenceLabel = document.getElementById('essence-label');
 const $btnSupernova = document.getElementById('btn-supernova');
 const $stageLabel = document.getElementById('stage-label');
+const $levelLabel = document.getElementById('level-label');
 
 $stageLabel.addEventListener('click', () => activateTab('map'));
+$levelLabel.addEventListener('click', () => activateTab('growth'));
 
 function updateStats() {
   $count.textContent = '✨ ' + fmt(S.stardust);
@@ -1563,6 +1737,8 @@ function updateStats() {
 
   const info = stageInfo(S.stage);
   $stageLabel.textContent = `🗺️ STAGE ${S.stage + 1} · ${info.icon} ${info.name}`;
+  $levelLabel.innerHTML = `⭐ Lv.${S.level}` +
+    (S.statPoints > 0 ? ` · <span class="points-hint">💪 포인트 ${S.statPoints}개!</span>` : '');
 
   const gain = supernovaGain();
   if (gain >= 1) {
@@ -1589,11 +1765,16 @@ $btnSupernova.addEventListener('click', () => {
     meteorsCaught: S.meteorsCaught,
     playTime: S.playTime,
     lifetimeEarned: S.lifetimeEarned,
+    level: S.level,
+    xp: S.xp,
+    statPoints: S.statPoints,
+    stats: { ...S.stats },
   };
   friendEls.forEach(el => el.remove());
   friendEls.clear();
   S = Object.assign(freshState(), keep);
   const essence = keep.essence;
+  addXp(200); // 환생 보너스 경험치
   save(true);
   renderShop();
   updateStats();
@@ -1615,7 +1796,7 @@ function refreshShopAffordability() {
       // MAX 모드에서는 살 수 있는 개수·비용이 실시간으로 변함
       if (costEl) costEl.innerHTML = `${k > 1 ? '×' + k + '<br>' : ''}✨${fmt(cost)}`;
     } else if (btn.dataset.upgrade) {
-      cost = UPGRADES.find(x => x.id === btn.dataset.upgrade).cost;
+      cost = upgradeCost(UPGRADES.find(x => x.id === btn.dataset.upgrade));
     }
     if (cost === null) return;
     const can = S.stardust >= cost;
@@ -1787,6 +1968,7 @@ function spawnMeteor() {
     const bonus = Math.max(clickPower() * 100, totalSps() * 120);
     earn(bonus);
     S.meteorsCaught++;
+    addXp(25);
     sfx('meteor');
     const rect = $mainArea.getBoundingClientRect();
     const pop = document.createElement('div');
@@ -1807,8 +1989,9 @@ function spawnMeteor() {
 }
 
 function scheduleMeteor() {
-  // 90초~4분 사이 랜덤 출현
-  setTimeout(() => { spawnMeteor(); scheduleMeteor(); }, 90000 + Math.random() * 150000);
+  // 90초~4분 사이 랜덤 출현 (행운 스탯만큼 더 자주, 최대 절반까지 단축)
+  const delay = (90000 + Math.random() * 150000) * (1 - meteorSpeedup());
+  setTimeout(() => { spawnMeteor(); scheduleMeteor(); }, delay);
 }
 
 /* ════════════════ 별 배경 ════════════════ */
@@ -1856,6 +2039,7 @@ function loop(now) {
   const gain = totalSps() * dt;
   if (gain > 0) earn(gain);
   S.playTime += dt;
+  addXp(dt / 30); // 방치로도 분당 2 XP
 
   updateStats();
   drawStarfield(now);
@@ -1866,7 +2050,19 @@ function loop(now) {
   if (shopDirtyTimer > 0.25) {
     shopDirtyTimer = 0;
     checkAchievements();
-    if (activeTab === 'records') {
+    if (activeTab === 'growth') {
+      // 경험치 바만 제자리 갱신
+      const fill = document.getElementById('xp-bar-fill');
+      if (fill) {
+        const need = xpNeed(S.level);
+        fill.style.width = Math.min(100, S.xp / need * 100) + '%';
+        const txt = document.getElementById('xp-text');
+        if (txt) txt.textContent = `경험치 ${Math.floor(S.xp)} / ${need}`;
+        const pts = document.getElementById('growth-points');
+        if (pts) pts.textContent = S.statPoints > 0 ? `💪 분배할 포인트 ${S.statPoints}개!` : '레벨 업으로 포인트를 얻어요';
+        document.querySelectorAll('.stat-plus').forEach(b => { b.disabled = S.statPoints <= 0; });
+      }
+    } else if (activeTab === 'records') {
       updateRecordStats();
     } else if (activeTab === 'map') {
       // 진행 바만 제자리 갱신
